@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "installCommand": "npm install",
+  "headers": [
+    {
+      "source": "/api/script",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/loader.lua",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    }
+  ]
+}
