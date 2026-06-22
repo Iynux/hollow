@@ -1,4 +1,4 @@
--- Hollow
+﻿-- Hollow
 -- UI: Neverlose.cc by 4lpaca
 
 if not getgenv().HollowAuthenticated then
@@ -9,25 +9,107 @@ if not getgenv().HollowAuthenticated then
     local AUTH_FOLDER = "Hollow"
     local AUTH_FILE = AUTH_FOLDER .. "/session_" .. LocalPlayerAuth.Name .. ".Hollow"
 
-    local function httpRequest(url, method, body)
-        local headers = { ["Content-Type"] = "application/json" }
-        local opts = { Url = url, Method = method, Headers = headers, Body = body }
+    local function normalizeHttpResponse(res)
+        if type(res) == "string" and res ~= "" then
+            return { Body = res, StatusCode = 200 }
+        end
+        if type(res) ~= "table" then
+            return nil
+        end
+        local responseBody = res.Body or res.body or res.Data or res.data
+        if type(responseBody) ~= "string" or responseBody == "" then
+            return nil
+        end
+        return {
+            Body = responseBody,
+            StatusCode = res.StatusCode or res.Status or res.status or 200,
+        }
+    end
 
-        if syn and syn.request then
-            local ok, res = pcall(syn.request, opts)
-            if ok and res and res.Body then return res end
+    local function callRequestFn(fn, url, method, headers, body)
+        local attempts = {
+            { Url = url, Method = method, Headers = headers, Body = body },
+            { url = url, method = method, headers = headers, body = body },
+        }
+        for _, opts in ipairs(attempts) do
+            local ok, res = pcall(fn, opts)
+            if ok then
+                local norm = normalizeHttpResponse(res)
+                if norm then
+                    return norm
+                end
+            end
+        end
+        return nil
+    end
+
+    local function collectRequestFns()
+        local fns = {}
+        local seen = {}
+        local function add(fn)
+            if type(fn) == "function" and not seen[fn] then
+                seen[fn] = true
+                table.insert(fns, fn)
+            end
         end
 
-        if http and http.request then
-            local ok, res = pcall(http.request, {
-                url = url,
-                method = method,
-                headers = headers,
-                body = body,
-            })
-            if ok and res and (res.Body or res.body) then
-                res.Body = res.Body or res.body
+        add(syn and syn.request)
+        add(http and http.request)
+        add(fluxus and fluxus.request)
+        add(krnl and krnl.request)
+        add(electron and electron.request)
+        add(request)
+        add(http_request)
+        add(httprequest)
+        if getgenv then
+            local g = getgenv()
+            if type(g) == "table" then
+                add(g.request)
+                add(g.http_request)
+                add(g.httprequest)
+            end
+        end
+
+        return fns
+    end
+
+    local function httpGetFallback(url)
+        local getters = {}
+        if type(httpget) == "function" then
+            table.insert(getters, httpget)
+        end
+        if type(game.HttpGet) == "function" then
+            table.insert(getters, function(u)
+                return game:HttpGet(u)
+            end)
+        end
+        table.insert(getters, function(u)
+            return game:HttpGet(u)
+        end)
+
+        for _, getFn in ipairs(getters) do
+            local ok, responseBody = pcall(getFn, url)
+            if ok and type(responseBody) == "string" and responseBody ~= "" then
+                return { Body = responseBody, StatusCode = 200 }
+            end
+        end
+        return nil
+    end
+
+    local function httpRequest(url, method, body)
+        local headers = { ["Content-Type"] = "application/json" }
+
+        for _, fn in ipairs(collectRequestFns()) do
+            local res = callRequestFn(fn, url, method, headers, body)
+            if res then
                 return res
+            end
+        end
+
+        if method == "GET" then
+            local getRes = httpGetFallback(url)
+            if getRes then
+                return getRes
             end
         end
 
@@ -44,10 +126,7 @@ if not getgenv().HollowAuthenticated then
         end
 
         if method == "GET" then
-            local getOk, getBody = pcall(game.HttpGet, url)
-            if getOk and type(getBody) == "string" and getBody ~= "" then
-                return { Body = getBody, StatusCode = 200 }
-            end
+            return httpGetFallback(url)
         end
 
         return nil
@@ -76,7 +155,7 @@ if not getgenv().HollowAuthenticated then
     local function apiRequest(path, payload)
         local res = httpRequest(HOLLOW_API .. path, "POST", HttpService:JSONEncode(payload))
         if not res or not res.Body then
-            return nil, "Request failed — enable HTTP in your executor"
+            return nil, "Your executor does not support HTTP requests"
         end
         local data = decodeJson(res.Body)
         if not data then

@@ -10,6 +10,7 @@ module.exports = (_req, res) => {
 
   for (const filePath of candidates) {
     if (fs.existsSync(filePath)) {
+      res.setHeader("Cache-Control", "no-store");
       return text(res, 200, fs.readFileSync(filePath, "utf8"));
     }
   }
