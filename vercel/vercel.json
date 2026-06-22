@@ -2,7 +2,8 @@
   "version": 2,
   "rewrites": [
     { "source": "/", "destination": "/api/index" },
-    { "source": "/loader.lua", "destination": "/api/loader" }
+    { "source": "/loader.lua", "destination": "/api/loader" },
+    { "source": "/api/script-meta", "destination": "/api/health" }
   ],
   "headers": [
     {

@@ -497,7 +497,7 @@ end
 
 local function loadMainScript(token)
     local scriptRes = httpRequest(
-        API .. "/api/script?token=" .. HttpService:UrlEncode(token),
+        API .. "/api/script?token=" .. HttpService:UrlEncode(token) .. "&_=" .. tostring(tick()),
         "GET"
     )
     if not scriptRes or not scriptRes.Body or isScriptErrorBody(scriptRes.Body) then
@@ -513,6 +513,8 @@ local function loadMainScript(token)
     local build = scriptRes.Body:match("^%-%-%s*HOLLOW_BUILD:([%w]+)")
     if build then
         getgenv().HOLLOW_BUILD = build
+    else
+        warn("[Hollow] Script has no HOLLOW_BUILD stamp — server may be serving an old copy")
     end
 
     fn()
