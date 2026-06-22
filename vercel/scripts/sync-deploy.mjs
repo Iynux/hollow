@@ -94,7 +94,11 @@ const loader = copyLoader(
 );
 
 if (loader) {
-  console.log(`[sync] loader.lua (static) -> ${path.join(vercelRoot, "public", "loader.lua")}`);
+  const publicLoader = path.join(vercelRoot, "public", "loader.lua");
+  const rootLoader = path.join(repoRoot, "loader.lua");
+  console.log(`[sync] loader.lua (static) -> ${publicLoader}`);
+  fs.writeFileSync(rootLoader, loader.body, "utf8");
+  console.log(`[sync] loader.lua -> ${rootLoader}`);
 }
 
 if (!hollow) {
