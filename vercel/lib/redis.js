@@ -43,6 +43,9 @@ function wrapNodeRedis(raw) {
     async ping() {
       return raw.ping();
     },
+    async del(key) {
+      await raw.del(key);
+    },
   };
 }
 
@@ -118,6 +121,55 @@ async function findAccountByKey(redis, keyValue) {
   return null;
 }
 
+async function renameKeyInRedis(redis, oldKeyValue, newKeyValue) {
+  const oldKey = String(oldKeyValue || "").trim().toUpperCase();
+  const newKey = String(newKeyValue || "").trim().toUpperCase();
+  if (!oldKey || !newKey) {
+    throw new Error("Missing old or new key");
+  }
+  if (oldKey === newKey) {
+    return { ok: true, key: newKey, renamed: false };
+  }
+
+  const existingNew = await redis.get(keyRecordKey(newKey));
+  if (existingNew) {
+    throw new Error("New key name is already in use");
+  }
+
+  const oldRecord = await redis.get(keyRecordKey(oldKey));
+  const linkedUsername = await redis.get(keyAccountKey(oldKey));
+  let account = linkedUsername ? await redis.get(accountKey(linkedUsername)) : null;
+  if (!account) {
+    account = await findAccountByKey(redis, oldKey);
+  }
+
+  const nextRecord = {
+    ...(oldRecord || {}),
+    key: newKey,
+    script: (oldRecord && oldRecord.script) || "hollow",
+    status: (oldRecord && oldRecord.status) || (account ? "claimed" : "available"),
+  };
+  await redis.set(keyRecordKey(newKey), nextRecord);
+
+  if (oldRecord && redis.del) {
+    await redis.del(keyRecordKey(oldKey));
+  }
+
+  const username = linkedUsername || (account && account.username);
+  if (username) {
+    if (account) {
+      account.key = newKey;
+      await redis.set(accountKey(username), account);
+    }
+    await linkKeyToAccount(redis, newKey, username);
+    if (redis.del) {
+      await redis.del(keyAccountKey(oldKey));
+    }
+  }
+
+  return { ok: true, key: newKey, username: username || null, renamed: true };
+}
+
 module.exports = {
   getRedis,
   accountKey,
@@ -126,4 +178,5 @@ module.exports = {
   tokenKey,
   linkKeyToAccount,
   findAccountByKey,
+  renameKeyInRedis,
 };

@@ -1,4 +1,4 @@
--- HOLLOW_BUILD:e7d763496e16
+-- HOLLOW_BUILD:535ece0fbff6
 -- Hollow
 -- UI: Neverlose.cc by 4lpaca
 
@@ -2432,9 +2432,9 @@ end)
 
 -- Loadout: Ulq, Ulq2, Rukia, Shieldbreaker, Reaper (suit), GoldenDrago
 local DUNGEON_PLACEMENTS = {
-    Ulq = Vector3.new(-148.8823699951172, -286.74853515625, -389.1006774902344),
-    Ulq2 = Vector3.new(-139.7054901123047, -287.4533996582031, -350.2327880859375),
-    Rukia = Vector3.new(-119.99340057373047, -287.60052490234375, -430.9882507324219),
+    Ulq = Vector3.new(-163.5992889404297, -293.78338623046875, -392.4437561035156),
+    Ulq2 = Vector3.new(-105.1090087890625, -289.9068298339844, -463.1716003417969),
+    Rukia = Vector3.new(-105.73583984375, -289.909912109375, -316.4510803222656),
     Shieldbreaker = {
         Vector3.new(-93.98811340332031, -293.78497314453125, -389.5032653808594),
         Vector3.new(-90.25550079345703, -293.7850341796875, -389.4335021972656),
@@ -7314,12 +7314,13 @@ local function setupWatermark()
     label.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
     label.BackgroundTransparency = 0.35
     label.BorderSizePixel = 0
-    label.Size = UDim2.fromOffset(118, 32)
-    label.Position = UDim2.new(1, -126, 0, 8)
+    label.Size = UDim2.fromOffset(92, 28)
+    label.Position = UDim2.new(1, -100, 1, -36)
     label.Font = Enum.Font.GothamMedium
     label.TextSize = 13
     label.TextColor3 = Color3.fromRGB(245, 245, 245)
     label.Text = "Hollow · --ms"
+    label.TextXAlignment = Enum.TextXAlignment.Center
     label.Parent = gui
 
     local corner = Instance.new("UICorner")
@@ -7338,16 +7339,12 @@ local function setupWatermark()
     end)
 
     task.spawn(function()
-        local buildTag = ""
-        if getgenv().HOLLOW_BUILD then
-            buildTag = tostring(getgenv().HOLLOW_BUILD):sub(1, 6) .. " · "
-        end
         while gui.Parent and not Library.Unloaded do
             local ping = "--"
             pcall(function()
                 ping = tostring(math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()))
             end)
-            label.Text = "Hollow · " .. buildTag .. ping .. "ms"
+            label.Text = "Hollow · " .. ping .. "ms"
             task.wait(1)
         end
     end)

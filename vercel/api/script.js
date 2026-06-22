@@ -7,6 +7,7 @@ const { json, text } = require("../lib/http");
 function loadScriptFromDisk() {
   const cwd = process.cwd();
   const candidates = [
+    path.join(cwd, "public", "hollow.lua"),
     path.join(cwd, "hollow.lua"),
     path.join(cwd, "private", "hollow.lua"),
     path.join(cwd, "..", "hollow.lua"),
@@ -23,6 +24,7 @@ function loadScriptFromDisk() {
       continue;
     }
     if (!body || !body.trim()) continue;
+    if (/Input Towers Now/.test(body)) continue;
 
     const stat = fs.statSync(filePath);
     const hasBuild = /^--\s*HOLLOW_BUILD:/.test(body) ? 1 : 0;
@@ -34,6 +36,13 @@ function loadScriptFromDisk() {
   }
 
   return best;
+}
+
+function isStaleScriptBody(body) {
+  if (!body || !String(body).trim()) return true;
+  if (/Input Towers Now/.test(body)) return true;
+  if (!/^--\s*HOLLOW_BUILD:/.test(body)) return true;
+  return false;
 }
 
 module.exports = async (req, res) => {
@@ -54,14 +63,13 @@ module.exports = async (req, res) => {
     }
 
     let loaded = null;
+    const fromDisk = loadScriptFromDisk();
     const fromKv = await getLiveScriptBody(redis);
-    if (fromKv) {
+
+    if (fromDisk && !isStaleScriptBody(fromDisk.body)) {
+      loaded = fromDisk;
+    } else if (fromKv && !isStaleScriptBody(fromKv)) {
       loaded = { body: fromKv, source: "kv" };
-    } else {
-      const fromDisk = loadScriptFromDisk();
-      if (fromDisk) {
-        loaded = fromDisk;
-      }
     }
 
     if (!loaded) {
