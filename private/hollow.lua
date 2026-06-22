@@ -1,4 +1,4 @@
-﻿-- Hollow
+-- Hollow
 -- UI: Neverlose.cc by 4lpaca
 
 if not getgenv().HollowAuthenticated then
@@ -259,7 +259,6 @@ if not getgenv().HollowAuthenticated then
         getgenv().HollowAuthUser = session.username
         getgenv().HollowAuthKey = session.key
         getgenv().HollowAuthToken = authData.token
-        authNotify("Hollow", "Authenticated as " .. tostring(session.username))
         return true
     end
 

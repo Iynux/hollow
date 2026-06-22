@@ -1,4 +1,4 @@
-﻿-- Hollow loader — login UI then fetch main script
+-- Hollow loader — login UI then fetch main script
 local API = "https://fuckmark.vercel.app"
 local AUTH_FOLDER = "Hollow"
 local AUTH_FILE = AUTH_FOLDER .. "/session_" .. game:GetService("Players").LocalPlayer.Name .. ".Hollow"
@@ -6,16 +6,6 @@ local AUTH_FILE = AUTH_FOLDER .. "/session_" .. game:GetService("Players").Local
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-
-local function notify(title, text)
-    pcall(function()
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = tostring(title),
-            Text = tostring(text),
-            Duration = 8,
-        })
-    end)
-end
 
 local function decodeJson(body)
     local ok, data = pcall(function()
@@ -229,7 +219,6 @@ local function finishAuth(session, authData)
     getgenv().HollowAuthUser = session.username
     getgenv().HollowAuthKey = session.key
     getgenv().HollowAuthToken = authData.token
-    notify("Hollow", "Authenticated as " .. tostring(session.username))
     return authData.token
 end
 
@@ -467,20 +456,47 @@ local function showAuthGui()
     return tokenResult
 end
 
+local function stripBom(source)
+    if type(source) ~= "string" then
+        return source
+    end
+    if source:sub(1, 3) == "\239\187\191" then
+        return source:sub(4)
+    end
+    return source
+end
+
+local function isScriptErrorBody(body)
+    if not body or body == "" then
+        return true
+    end
+    return stripBom(body):sub(1, 2) == "--"
+end
+
+local function compileChunk(source)
+    source = stripBom(source)
+    local fn, err
+    if loadstring then
+        fn, err = loadstring(source)
+    end
+    if not fn and load then
+        fn, err = load(source)
+    end
+    return fn, err
+end
+
 local function loadMainScript(token)
     local scriptRes = httpRequest(
         API .. "/api/script?token=" .. HttpService:UrlEncode(token),
         "GET"
     )
-    if not scriptRes or not scriptRes.Body or scriptRes.Body:sub(1, 2) == "--" then
-        notify("Hollow", "Script fetch failed")
+    if not scriptRes or not scriptRes.Body or isScriptErrorBody(scriptRes.Body) then
         return warn("[Hollow] Script fetch failed:", scriptRes and scriptRes.Body)
     end
 
-    local fn = loadstring(scriptRes.Body)
+    local fn, err = compileChunk(scriptRes.Body)
     if not fn then
-        notify("Hollow", "Failed to parse script")
-        return warn("[Hollow] Failed to parse script")
+        return warn("[Hollow] Failed to parse script:", err)
     end
 
     fn()
@@ -492,7 +508,6 @@ if not token then
 end
 
 if not token then
-    notify("Hollow", "Authentication required.")
     return warn("[Hollow] Authentication required.")
 end
 

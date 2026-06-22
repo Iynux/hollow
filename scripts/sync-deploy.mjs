@@ -17,11 +17,21 @@ function sha256(text) {
   return crypto.createHash("sha256").update(text, "utf8").digest("hex").slice(0, 12);
 }
 
+function stripBom(text) {
+  if (text.charCodeAt(0) === 0xfeff) {
+    return text.slice(1);
+  }
+  if (text.startsWith("\uFEFF")) {
+    return text.slice(1);
+  }
+  return text;
+}
+
 function copyFirst(sources, dest, label) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   for (const source of sources) {
     if (!fs.existsSync(source)) continue;
-    const body = fs.readFileSync(source, "utf8");
+    const body = stripBom(fs.readFileSync(source, "utf8"));
     fs.writeFileSync(dest, body, "utf8");
     console.log(`[sync] ${label}: ${source} -> ${dest}`);
     return { source, body };
