@@ -1,9 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const { getRedis, tokenKey } = require("../lib/redis");
+const { getLiveScriptBody } = require("../lib/script-store");
 const { json, text } = require("../lib/http");
 
-function loadScriptBody() {
+function loadScriptFromDisk() {
   const cwd = process.cwd();
   const candidates = [
     path.join(cwd, "hollow.lua"),
@@ -28,7 +29,7 @@ function loadScriptBody() {
     const score = hasBuild * 1e15 + stat.mtimeMs;
 
     if (!best || score > best.score) {
-      best = { body, filePath, score };
+      best = { body, filePath, score, source: "file" };
     }
   }
 
@@ -52,7 +53,17 @@ module.exports = async (req, res) => {
       return text(res, 401, "-- invalid or expired token");
     }
 
-    const loaded = loadScriptBody();
+    let loaded = null;
+    const fromKv = await getLiveScriptBody(redis);
+    if (fromKv) {
+      loaded = { body: fromKv, source: "kv" };
+    } else {
+      const fromDisk = loadScriptFromDisk();
+      if (fromDisk) {
+        loaded = fromDisk;
+      }
+    }
+
     if (!loaded) {
       return text(res, 500, "-- script not found on server");
     }
@@ -60,7 +71,10 @@ module.exports = async (req, res) => {
     const build = loaded.body.match(/^--\s*HOLLOW_BUILD:([^\r\n]+)/)?.[1] || "unknown";
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     res.setHeader("X-Hollow-Build", build);
-    res.setHeader("X-Hollow-File", path.basename(loaded.filePath));
+    res.setHeader("X-Hollow-Source", loaded.source);
+    if (loaded.filePath) {
+      res.setHeader("X-Hollow-File", path.basename(loaded.filePath));
+    }
     return text(res, 200, loaded.body);
   } catch (err) {
     return text(res, 500, `-- ${String(err?.message || err)}`);

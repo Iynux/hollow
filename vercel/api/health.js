@@ -1,9 +1,9 @@
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 const { getRedis } = require("../lib/redis");
+const { getLiveScriptMeta, getLiveScriptBody, scriptHash, parseBuild } = require("../lib/script-store");
 
-function loadScriptInfo() {
+function loadScriptFromDisk() {
   const cwd = process.cwd();
   const candidates = [
     path.join(cwd, "hollow.lua"),
@@ -28,19 +28,18 @@ function loadScriptInfo() {
     const score = hasBuild * 1e15 + stat.mtimeMs;
 
     if (!best || score > best.score) {
-      best = { body, filePath, score };
+      best = {
+        hash: scriptHash(body),
+        build: parseBuild(body),
+        bytes: Buffer.byteLength(body, "utf8"),
+        file: path.basename(filePath),
+        source: "file",
+        score,
+      };
     }
   }
 
-  if (!best) return null;
-
-  const buildMatch = best.body.match(/^--\s*HOLLOW_BUILD:([^\r\n]+)/);
-  return {
-    hash: crypto.createHash("sha256").update(best.body, "utf8").digest("hex").slice(0, 12),
-    build: buildMatch ? buildMatch[1].trim() : null,
-    bytes: Buffer.byteLength(best.body, "utf8"),
-    file: path.basename(best.filePath),
-  };
+  return best;
 }
 
 function readScriptManifest() {
@@ -56,28 +55,42 @@ function readScriptManifest() {
 module.exports = async (_req, res) => {
   const payload = { ok: true, service: "Hollow API", storage: "kv" };
   const manifest = readScriptManifest();
-  const live = loadScriptInfo();
-
-  if (live) {
-    payload.script = {
-      updatedAt: manifest?.updatedAt ?? null,
-      hollowHash: live.hash,
-      hollowBuild: live.build,
-      loaderHash: manifest?.loader?.hash ?? null,
-      servedFrom: live.file,
-    };
-  } else if (manifest) {
-    payload.script = {
-      updatedAt: manifest.updatedAt,
-      hollowHash: manifest.hollow?.hash ?? null,
-      loaderHash: manifest.loader?.hash ?? null,
-    };
-  }
 
   try {
     const redis = await getRedis();
     await redis.ping();
     payload.kv = "connected";
+
+    const kvMeta = await getLiveScriptMeta(redis);
+    const kvBody = await getLiveScriptBody(redis);
+    const disk = loadScriptFromDisk();
+
+    if (kvMeta && kvBody) {
+      payload.script = {
+        updatedAt: kvMeta.updatedAt,
+        hollowHash: kvMeta.hash,
+        hollowBuild: kvMeta.build,
+        loaderHash: manifest?.loader?.hash ?? null,
+        servedFrom: "redis",
+        bytes: kvMeta.bytes,
+      };
+    } else if (disk) {
+      payload.script = {
+        updatedAt: manifest?.updatedAt ?? null,
+        hollowHash: disk.hash,
+        hollowBuild: disk.build,
+        loaderHash: manifest?.loader?.hash ?? null,
+        servedFrom: disk.file,
+        bytes: disk.bytes,
+      };
+    } else if (manifest) {
+      payload.script = {
+        updatedAt: manifest.updatedAt,
+        hollowHash: manifest.hollow?.hash ?? null,
+        loaderHash: manifest.loader?.hash ?? null,
+        servedFrom: "manifest-only",
+      };
+    }
   } catch (err) {
     payload.kv = "error";
     payload.kvError = String(err?.message || err);
