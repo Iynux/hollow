@@ -1,20 +1,6 @@
-const fs = require("fs");
-const path = require("path");
 const { getRedis, tokenKey } = require("../lib/redis");
 const { json, text } = require("../lib/http");
-
-function loadScriptBody() {
-  const candidates = [
-    path.join(process.cwd(), "private", "hollow.lua"),
-    path.join(process.cwd(), "..", "hollow.lua"),
-  ];
-  for (const filePath of candidates) {
-    if (fs.existsSync(filePath)) {
-      return fs.readFileSync(filePath, "utf8");
-    }
-  }
-  return null;
-}
+const { loadScriptBody } = require("../lib/script-body");
 
 module.exports = async (req, res) => {
   if (req.method !== "GET") {
@@ -33,12 +19,13 @@ module.exports = async (req, res) => {
       return text(res, 401, "-- invalid or expired token");
     }
 
-    const script = loadScriptBody();
-    if (!script) {
+    const loaded = loadScriptBody();
+    if (!loaded) {
       return text(res, 500, "-- script not found on server");
     }
 
-    return text(res, 200, script);
+    res.setHeader("X-Hollow-Build", loaded.body.match(/^--\s*HOLLOW_BUILD:([^\r\n]+)/)?.[1] || "unknown");
+    return text(res, 200, loaded.body);
   } catch (err) {
     return text(res, 500, `-- ${String(err?.message || err)}`);
   }

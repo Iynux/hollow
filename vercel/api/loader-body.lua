@@ -510,6 +510,11 @@ local function loadMainScript(token)
         return warn("[Hollow] Failed to parse script:", err)
     end
 
+    local build = scriptRes.Body:match("^%-%-%s*HOLLOW_BUILD:([%w]+)")
+    if build then
+        getgenv().HOLLOW_BUILD = build
+    end
+
     fn()
 end
 
