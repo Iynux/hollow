@@ -2,7 +2,7 @@
   "version": 2,
   "rewrites": [
     { "source": "/", "destination": "/api/index" },
-    { "source": "/loader.lua", "destination": "/api/loader" }
+    { "source": "/api/script-meta", "destination": "/api/health" }
   ],
   "headers": [
     {
@@ -12,10 +12,17 @@
       ]
     },
     {
-      "source": "/api/loader",
+      "source": "/hollow.lua",
       "headers": [
         { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
-        { "key": "Cache-Control", "value": "no-cache" }
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/loader.lua",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
       ]
     }
   ]

@@ -1,19 +1,48 @@
 const fs = require("fs");
 const path = require("path");
 const { getRedis, tokenKey } = require("../lib/redis");
+const { getLiveScriptBody } = require("../lib/script-store");
 const { json, text } = require("../lib/http");
 
-function loadScriptBody() {
+function loadScriptFromDisk() {
+  const cwd = process.cwd();
   const candidates = [
-    path.join(process.cwd(), "private", "hollow.lua"),
-    path.join(process.cwd(), "..", "hollow.lua"),
+    path.join(cwd, "public", "hollow.lua"),
+    path.join(cwd, "hollow.lua"),
+    path.join(cwd, "private", "hollow.lua"),
+    path.join(cwd, "..", "hollow.lua"),
   ];
+
+  let best = null;
   for (const filePath of candidates) {
-    if (fs.existsSync(filePath)) {
-      return fs.readFileSync(filePath, "utf8");
+    if (!fs.existsSync(filePath)) continue;
+
+    let body;
+    try {
+      body = fs.readFileSync(filePath, "utf8");
+    } catch {
+      continue;
+    }
+    if (!body || !body.trim()) continue;
+    if (/Input Towers Now/.test(body)) continue;
+
+    const stat = fs.statSync(filePath);
+    const hasBuild = /^--\s*HOLLOW_BUILD:/.test(body) ? 1 : 0;
+    const score = hasBuild * 1e15 + stat.mtimeMs;
+
+    if (!best || score > best.score) {
+      best = { body, filePath, score, source: "file" };
     }
   }
-  return null;
+
+  return best;
+}
+
+function isStaleScriptBody(body) {
+  if (!body || !String(body).trim()) return true;
+  if (/Input Towers Now/.test(body)) return true;
+  if (!/^--\s*HOLLOW_BUILD:/.test(body)) return true;
+  return false;
 }
 
 module.exports = async (req, res) => {
@@ -33,12 +62,28 @@ module.exports = async (req, res) => {
       return text(res, 401, "-- invalid or expired token");
     }
 
-    const script = loadScriptBody();
-    if (!script) {
+    let loaded = null;
+    const fromDisk = loadScriptFromDisk();
+    const fromKv = await getLiveScriptBody(redis);
+
+    if (fromDisk && !isStaleScriptBody(fromDisk.body)) {
+      loaded = fromDisk;
+    } else if (fromKv && !isStaleScriptBody(fromKv)) {
+      loaded = { body: fromKv, source: "kv" };
+    }
+
+    if (!loaded) {
       return text(res, 500, "-- script not found on server");
     }
 
-    return text(res, 200, script);
+    const build = loaded.body.match(/^--\s*HOLLOW_BUILD:([^\r\n]+)/)?.[1] || "unknown";
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("X-Hollow-Build", build);
+    res.setHeader("X-Hollow-Source", loaded.source);
+    if (loaded.filePath) {
+      res.setHeader("X-Hollow-File", path.basename(loaded.filePath));
+    }
+    return text(res, 200, loaded.body);
   } catch (err) {
     return text(res, 500, `-- ${String(err?.message || err)}`);
   }

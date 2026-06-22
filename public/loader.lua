@@ -1,3 +1,4 @@
+-- LOADER_BUILD:293ec74e6353
 -- Hollow loader — login UI then fetch main script
 local API = "https://fuckmark.vercel.app"
 local AUTH_FOLDER = "Hollow"
@@ -495,19 +496,47 @@ local function compileChunk(source)
     return fn, err
 end
 
+local function isStaleScriptBody(body)
+    if isScriptErrorBody(body) then
+        return true
+    end
+    if body:find("Input Towers Now", 1, true) then
+        return true
+    end
+    if not body:match("^%-%-%s*HOLLOW_BUILD:") then
+        return true
+    end
+    return false
+end
+
 local function loadMainScript(token)
-    local scriptRes = httpRequest(
-        API .. "/api/script?token=" .. HttpService:UrlEncode(token),
-        "GET"
-    )
-    if not scriptRes or not scriptRes.Body or isScriptErrorBody(scriptRes.Body) then
+    local url = API .. "/hollow.lua?_=" .. tostring(tick())
+
+    local customUrl = getgenv().HollowScriptUrl
+    if type(customUrl) == "string" and customUrl ~= "" then
+        url = customUrl .. (customUrl:find("?", 1, true) and "&" or "?") .. "_=" .. tostring(tick())
+    end
+
+    local scriptRes = httpRequest(url, "GET")
+    if not scriptRes or not scriptRes.Body or isStaleScriptBody(scriptRes.Body) then
         local preview = scriptRes and scriptRes.Body and (scriptRes.Body:sub(1, 120):gsub("%s+", " ")) or "no response"
-        return warn("[Hollow] Script fetch failed:", preview)
+        return warn(
+            "[Hollow] Script fetch failed — use loader.lua and push vercel/public/hollow.lua. Preview:",
+            preview
+        )
     end
 
     local fn, err = compileChunk(scriptRes.Body)
     if not fn then
         return warn("[Hollow] Failed to parse script:", err)
+    end
+
+    local build = scriptRes.Body:match("^%-%-%s*HOLLOW_BUILD:([%w]+)")
+    if build then
+        getgenv().HOLLOW_BUILD = build
+        warn("[Hollow] Build " .. build)
+    else
+        warn("[Hollow] Script has no HOLLOW_BUILD stamp — server may be serving an old copy")
     end
 
     fn()
@@ -523,3 +552,4 @@ if not token then
 end
 
 loadMainScript(token)
+.TrimStart()
