@@ -2211,7 +2211,7 @@ local Players = cloneref(game:GetService("Players"))
 local lp = cloneref(Players.LocalPlayer)
 local VIM = cloneref(game:GetService("VirtualInputManager"))
 
-local DUNGEON_RETURN_AT_FLOOR = 11
+local DUNGEON_RETURN_AT_FLOOR = 12
 local LOBBY_WAIT = 2.5
 
 local GlobalInit = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("GlobalInit"):WaitForChild("RemoteEvents")
