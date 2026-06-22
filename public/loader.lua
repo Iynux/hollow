@@ -470,7 +470,17 @@ local function isScriptErrorBody(body)
     if not body or body == "" then
         return true
     end
-    return stripBom(body):sub(1, 2) == "--"
+    body = stripBom(body)
+    if body:sub(1, 2) ~= "--" then
+        return false
+    end
+    -- API errors are short one-liners like "-- invalid token".
+    -- hollow.lua also starts with "--" but is the full script.
+    local firstLine = body:match("^[^\r\n]+") or body
+    if #body > 500 or body:find("\n", 1, true) then
+        return false
+    end
+    return #firstLine < 160
 end
 
 local function compileChunk(source)
@@ -491,7 +501,8 @@ local function loadMainScript(token)
         "GET"
     )
     if not scriptRes or not scriptRes.Body or isScriptErrorBody(scriptRes.Body) then
-        return warn("[Hollow] Script fetch failed:", scriptRes and scriptRes.Body)
+        local preview = scriptRes and scriptRes.Body and (scriptRes.Body:sub(1, 120):gsub("%s+", " ")) or "no response"
+        return warn("[Hollow] Script fetch failed:", preview)
     end
 
     local fn, err = compileChunk(scriptRes.Body)
