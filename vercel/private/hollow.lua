@@ -1020,7 +1020,7 @@ Towers = Towers or {
     HeroOfHell = "",
 }
 
-local towerNames = { "Rukia", "Ulq", "Ulq2", "Ragna", "Primordial", "Reaper", "GoldenDrago", "RageDrago", "Shieldbreaker", "HeroOfHell" }
+local towerNames = { "Rukia", "Ulq", "Ulq2", "Ragna", "Primordial", "Reaper", "GoldenDrago", "RageDrago", "Shieldbreaker", "Emilia", "HeroOfHell" }
 
 local LOBBY_TELEPORT_POSITIONS = {
     { -277, 3, -127 },
@@ -2206,47 +2206,92 @@ while readfile("AutoLasNochesHard_" .. LocalPlayerName .. ".Hollow") == "true" d
 end
 ]====],
     ["Dungeons.lua"] = [====[
-local LocalPlayerName = game:GetService("Players").LocalPlayer.Name
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = cloneref(game:GetService("Players"))
 local lp = cloneref(Players.LocalPlayer)
 local VIM = cloneref(game:GetService("VirtualInputManager"))
 
-local function IsDungeon()
-    local NetworkProxy = require(ReplicatedStorage.GenericModules.Object.NetworkProxy)
-    if NetworkProxy.root.serverType == "Match" then
-        local mode = NetworkProxy.root.matchData.gamemode
-        if mode == "Dungeon" or mode == "DungeonHardcore" then return true end
+local DUNGEON_RETURN_AT_FLOOR = 11
+local LOBBY_WAIT = 2.5
+
+local GlobalInit = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("GlobalInit"):WaitForChild("RemoteEvents")
+
+local function fireGlobal(remoteName, ...)
+    if getgenv().HollowFireRemote then
+        getgenv().HollowFireRemote(remoteName, ...)
+        return
     end
-    return false
+    GlobalInit:WaitForChild(remoteName):FireServer(...)
 end
 
-if not IsDungeon() then
-    lp.Character.HumanoidRootPart.CFrame = CFrame.new(-3, -22, 4132)
-    task.wait(2.5)
-    local text  = game.Players.LocalPlayer.PlayerGui.MainGui.MainFrames.FloorSelection.SelectedMap.MapName.Text
-    local words = text:split(" ")
-    local floorNum = tonumber(words[#words])
+local function IsDungeon()
+    local ok, result = pcall(function()
+        local NetworkProxy = require(ReplicatedStorage.GenericModules.Object.NetworkProxy)
+        if NetworkProxy.root.serverType == "Match" then
+            local mode = NetworkProxy.root.matchData.gamemode
+            return mode == "Dungeon" or mode == "DungeonHardcore"
+        end
+        return false
+    end)
+    return ok and result == true
+end
 
-    if floorNum then
-        if floorNum >= 21 then
-            game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerClaimDungeonReward:FireServer()
-            task.wait(0.1)
-            game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerPurchaseDungeonItem:FireServer("TeleportScroll1")
-            task.wait(0.25)
-            game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerUseConsumable:FireServer("DungeonScroll1")
-            task.wait(0.25)
-        elseif floorNum < 11 then
-            game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerPurchaseDungeonItem:FireServer("TeleportScroll1")
-            task.wait(0.25)
-            game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerUseConsumable:FireServer("DungeonScroll1")
-            task.wait(0.25)
+local function waitUntil(predicate, timeout)
+    local elapsed = 0
+    while elapsed < timeout do
+        if predicate() then
+            return true
+        end
+        task.wait(0.5)
+        elapsed = elapsed + 0.5
+    end
+    return predicate()
+end
+
+local function selectDungeonFloorOne()
+    local floorFrame = lp.PlayerGui:FindFirstChild("MainGui", true)
+        and lp.PlayerGui.MainGui:FindFirstChild("MainFrames", true)
+        and lp.PlayerGui.MainGui.MainFrames:FindFirstChild("FloorSelection", true)
+
+    if floorFrame then
+        for _, desc in ipairs(floorFrame:GetDescendants()) do
+            if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                local text = string.lower(desc.Text or "")
+                if text == "floor 1" or text == "1" or text:find("floor 1", 1, true) then
+                    local clickTarget = desc:IsA("GuiButton") and desc or desc:FindFirstAncestorWhichIsA("GuiButton")
+                    if clickTarget and firesignal then
+                        pcall(firesignal, clickTarget.MouseButton1Click)
+                        task.wait(0.2)
+                        return
+                    end
+                end
+            end
         end
     end
 
-    game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerSelectedGamemode:FireServer("DungeonHardcore")
+    local mapRemote = GlobalInit:FindFirstChild("PlayerSelectedMap")
+    if mapRemote then
+        for _, key in ipairs({ "Dungeon1", "Floor1", "DungeonFloor1", "1" }) do
+            pcall(function()
+                mapRemote:FireServer(key)
+            end)
+            task.wait(0.1)
+        end
+    end
+end
+
+local function enterDungeonFromLobby()
+    local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.CFrame = CFrame.new(-3, -22, 4132)
+    end
+    task.wait(LOBBY_WAIT)
+
+    selectDungeonFloorOne()
+    fireGlobal("PlayerSelectedGamemode", "DungeonHardcore")
     task.wait(0.25)
-    game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerQuickstartTeleport:FireServer()
+    fireGlobal("PlayerQuickstartTeleport")
+    waitUntil(IsDungeon, 45)
 end
 
 local highestCard, highestIndex = nil, nil
@@ -2282,12 +2327,18 @@ end
 
 local function ClickBestCard()
     if GetChallengeCards() then
-        game:GetService("ReplicatedStorage").Modules.GlobalInit.RemoteEvents.PlayerVoteForChallenge:FireServer(highestIndex)
+        fireGlobal("PlayerVoteForChallenge", highestIndex)
     end
 end
 
-function BossAlive()
-    for _, enemy in pairs(game.Workspace.EntityModels.Enemies:GetChildren()) do
+local function BossAlive()
+    local enemies = workspace:FindFirstChild("EntityModels")
+        and workspace.EntityModels:FindFirstChild("Enemies")
+    if not enemies then
+        return false
+    end
+
+    for _, enemy in pairs(enemies:GetChildren()) do
         local hrp = enemy:FindFirstChild("HumanoidRootPart")
         if hrp and hrp:FindFirstChild("Shield") and enemy:FindFirstChild("Tail", true) then
             return true
@@ -2296,32 +2347,52 @@ function BossAlive()
     return false
 end
 
-local Network    = game:GetService("ReplicatedStorage"):WaitForChild("GenericModules"):WaitForChild("Service"):WaitForChild("Network")
-local GlobalInit = game:GetService("ReplicatedStorage"):WaitForChild("Modules"):WaitForChild("GlobalInit"):WaitForChild("RemoteEvents")
+local Network = ReplicatedStorage:WaitForChild("GenericModules"):WaitForChild("Service"):WaitForChild("Network")
 
-local function _randOffset(towerName)
+local function _randOffset()
     local angle = math.random() * math.pi * 2
-    local maxDist = (towerName == "Shieldbreaker" or towerName == "Reaper") and 22 or 7
-    local dist  = math.random() * maxDist
+    local dist = math.random() * 7
     return math.cos(angle) * dist, math.sin(angle) * dist
 end
 
 function PlaceTower(Tower, Position)
-    local rx, rz = _randOffset(Tower)
+    local towerId = Towers and Towers[Tower]
+    if not towerId or towerId == "" then
+        return
+    end
+    local rx, rz = _randOffset()
     Network:WaitForChild("PlayerPlaceTower"):FireServer(
-        Towers[Tower],
+        towerId,
         vector.create(Position.X + rx, Position.Y, Position.Z + rz),
         0
     )
 end
 
-function SetGame2x()
-    getgenv().HollowFireRemote("ClientRequestGameSpeed", "2")
+function PlaceTowerExact(Tower, Position)
+    local towerId = Towers and Towers[Tower]
+    if not towerId or towerId == "" then
+        return
+    end
+    Network:WaitForChild("PlayerPlaceTower"):FireServer(
+        towerId,
+        vector.create(Position.X, Position.Y, Position.Z),
+        0
+    )
 end
 
-game.Players.LocalPlayer.PlayerGui.DescendantAdded:Connect(function(obj)
+local function placeAllExact(towerName, positions)
+    for _, pos in ipairs(positions) do
+        PlaceTowerExact(towerName, pos)
+    end
+end
+
+function SetGame2x()
+    fireGlobal("ClientRequestGameSpeed", "2")
+end
+
+lp.PlayerGui.DescendantAdded:Connect(function(obj)
     if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-        local msg = obj.Text:lower()
+        local msg = string.lower(obj.Text or "")
         if msg:find("already placed") or msg:find("enough cash") or msg:find("too close") or msg:find("cyborg") then
             obj.Visible = false
         end
@@ -2330,12 +2401,19 @@ end)
 
 task.spawn(function()
     while true do
-        local descText = game.Players.LocalPlayer.PlayerGui.MessagesGui.FullScreen.Description.Description.Text
-        local floor    = descText:match("Floor%s+(%d+)")
-        if tonumber(floor) and tonumber(floor) >= 21 then
-            getgenv().HollowFireRemote("PlayerRequestReturnLobby")
-        elseif getgenv().HollowIsInMatch() then
-            getgenv().HollowFireRemote("PlayerVoteReplay")
+        local descGui = lp.PlayerGui:FindFirstChild("MessagesGui", true)
+        local descText = descGui
+            and descGui:FindFirstChild("FullScreen", true)
+            and descGui.FullScreen:FindFirstChild("Description", true)
+            and descGui.FullScreen.Description:FindFirstChild("Description", true)
+            and descGui.FullScreen.Description.Description.Text
+            or ""
+
+        local floor = descText:match("Floor%s+(%d+)")
+        if tonumber(floor) and tonumber(floor) >= DUNGEON_RETURN_AT_FLOOR then
+            fireGlobal("PlayerRequestReturnLobby")
+        elseif IsDungeon() then
+            fireGlobal("PlayerVoteReplay")
         end
         task.wait(0.25)
     end
@@ -2351,47 +2429,64 @@ task.spawn(function()
     end
 end)
 
-while true do
+-- Loadout: Ulq, Ulq2, Rukia, Shieldbreaker, Reaper (suit), GoldenDrago
+local DUNGEON_PLACEMENTS = {
+    Ulq = Vector3.new(-142.8823699951172, -290.74853515625, -389.1006774902344),
+    Ulq2 = Vector3.new(-139.7054901123047, -287.4533996582031, -350.2327880859375),
+    Rukia = Vector3.new(-119.99340057373047, -287.60052490234375, -430.9882507324219),
+    Shieldbreaker = {
+        Vector3.new(-93.98811340332031, -293.78497314453125, -389.5032653808594),
+        Vector3.new(-90.25550079345703, -293.7850341796875, -389.4335021972656),
+        Vector3.new(-86.65574645996094, -293.7850341796875, -389.3939514160156),
+        Vector3.new(-84.96693420410156, -293.7799987792969, -398.8055725097656),
+        Vector3.new(-89.69596862792969, -293.7803649902344, -398.16522216796875),
+    },
+    Reaper = {
+        Vector3.new(-131.7643280029297, -293.777587890625, -403.31707763671875),
+        Vector3.new(-131.88751220703125, -293.77484130859375, -408.5157775878906),
+        Vector3.new(-131.98858642578125, -293.7725830078125, -412.7813720703125),
+        Vector3.new(-127.1898422241211, -293.77252197265625, -412.89459228515625),
+        Vector3.new(-127.0729751586914, -293.7751159667969, -407.9624938964844),
+    },
+}
+
+local function runBossCycle()
     local bossSpawned = false
 
     local t1 = task.spawn(function()
-        while not bossSpawned do
-            if getgenv().HollowIsInMatch() then
-                getgenv().HollowFireRemote("PlayerVoteToStartMatch")
-            end
-            PlaceTower("Rukia", Vector3.new(-126, -297, -473))
+        while not bossSpawned and IsDungeon() do
+            fireGlobal("PlayerVoteToStartMatch")
+            PlaceTowerExact("Ulq", DUNGEON_PLACEMENTS.Ulq)
+            PlaceTowerExact("Ulq2", DUNGEON_PLACEMENTS.Ulq2)
+            PlaceTowerExact("Rukia", DUNGEON_PLACEMENTS.Rukia)
             ClickBestCard()
             task.wait(0.1)
         end
     end)
 
     local t2 = task.spawn(function()
-        while not bossSpawned do
-            task.wait(2)
-            PlaceTower("Ulq",        Vector3.new(-137, -297, -379))
-            PlaceTower("Primordial", Vector3.new(-138, -297, -446))
+        while not bossSpawned and IsDungeon() do
+            task.wait(15)
+            placeAllExact("Shieldbreaker", DUNGEON_PLACEMENTS.Shieldbreaker)
+        end
+    end)
+
+    local t3 = task.spawn(function()
+        while not bossSpawned and IsDungeon() do
+            task.wait(15)
+            placeAllExact("Reaper", DUNGEON_PLACEMENTS.Reaper)
         end
     end)
 
     local t4 = task.spawn(function()
         task.wait(30)
-        while not bossSpawned do
-            PlaceTower("RageDrago", Vector3.new(0, 0, 0))
+        while not bossSpawned and IsDungeon() do
+            PlaceTower("GoldenDrago", Vector3.new(0, 0, 0))
             task.wait(15)
         end
     end)
 
-    local t3 = task.spawn(function()
-        while not bossSpawned do
-            task.wait(15)
-            PlaceTower("Shieldbreaker", Vector3.new(-126, -297, -333))
-            PlaceTower("Shieldbreaker", Vector3.new(-126, -297, -360))
-            PlaceTower("Shieldbreaker", Vector3.new(-150, -297, -333))
-            PlaceTower("Shieldbreaker", Vector3.new(-150, -297, -360))
-        end
-    end)
-
-    while not bossSpawned do
+    while not bossSpawned and IsDungeon() do
         if BossAlive() then
             bossSpawned = true
             task.cancel(t1)
@@ -2402,8 +2497,26 @@ while true do
         task.wait(0.1)
     end
 
-    while BossAlive() do task.wait(0.5) end
+    while BossAlive() and IsDungeon() do
+        task.wait(0.5)
+    end
     task.wait(5)
+end
+
+while true do
+    if not IsDungeon() then
+        enterDungeonFromLobby()
+        if not IsDungeon() then
+            task.wait(3)
+            continue
+        end
+    end
+
+    runBossCycle()
+
+    if not IsDungeon() then
+        task.wait(LOBBY_WAIT)
+    end
 end
 ]====],
     ["InfinityCastle.lua"] = [====[
@@ -4097,7 +4210,10 @@ local function matchTowerFromText(text)
     if blob:find("ragna") or blob:find("gohan") or blob:find("ichigo") then
         return "Ragna"
     end
-    if blob:find("primordial") or blob:find("witch") or blob:find("emilia") or blob:find("pumpkin") or blob:find("jack") or blob:find("shadow") then
+    if blob:find("emilia", 1, true) or blob:find("emiri", 1, true) or blob:find("savior", 1, true) then
+        return "Emilia"
+    end
+    if blob:find("primordial") or blob:find("witch") or blob:find("pumpkin") or blob:find("jack") or blob:find("shadow") then
         return "Primordial"
     end
     if blob:find("hitsugaya") or blob:find("toshiro") or blob:find("white haze") or blob:find("nokia") or blob:find("rukia") then
@@ -5691,6 +5807,10 @@ local function getHotbarTowerIds()
         end
     end
 
+    if assigned.Emilia and assigned.Emilia ~= "" and (not assigned.Primordial or assigned.Primordial == "") then
+        assigned.Primordial = assigned.Emilia
+    end
+
     return assigned
 end
 
@@ -6548,7 +6668,7 @@ autoInputTowers = function(options)
     local assigned, err = getHotbarTowerIds()
     if not assigned then
         if not quiet then
-            Library:Notify({ Title = "Hollow", Description = err, Time = 4 })
+            warn("[Hollow] Hotbar sync:", err)
         end
         return false
     end
@@ -6562,16 +6682,38 @@ autoInputTowers = function(options)
         end
     end
 
-    if not quiet then
-        Library:Notify({
-            Title = "Hollow",
-            Description = string.format("Matched %d tower ID(s) from your hotbar.", filled),
-            Time = 4,
-        })
+    if assigned.Emilia and assigned.Emilia ~= "" then
+        getgenv().EmiliaID = assigned.Emilia
+        Towers.Emilia = assigned.Emilia
+    end
+
+    if not quiet and filled > 0 then
+        warn(string.format("[Hollow] Synced %d tower ID(s) from hotbar.", filled))
     end
 
     queueAutoSave()
     return true
+end
+
+local function isAutoInputTowersEnabled()
+    if Toggles.AutoInputTowers then
+        return Toggles.AutoInputTowers.Value
+    end
+    return readToggle("AutoInputTowers", true)
+end
+
+local function startHotbarAutoSync()
+    task.spawn(function()
+        task.wait(1.5)
+        pcall(autoInputTowers, { quiet = true })
+
+        while not Library.Unloaded do
+            if isAutoInputTowersEnabled() then
+                pcall(autoInputTowers, { quiet = true })
+            end
+            task.wait(2)
+        end
+    end)
 end
 
 local SCAN_MAX_INSTANCES = 15000
@@ -7402,14 +7544,7 @@ makeToggle(PvPSection, "Anti Hameru Bubble", "AntiHameruBubble", false)
 makeToggle(PvPSection, "Remove Titans", "RemoveTitans", false)
 
 local TowerGroup = towerTab:AddSection({ Name = "TOWER IDS", Position = "left" })
-makeToggle(TowerGroup, "Auto Input Towers", "AutoInputTowers", false)
-TowerGroup:AddButton({
-    Name = "Input Towers Now",
-    Icon = "arrow-right-from-portrait-rectangle",
-    Callback = function()
-        autoInputTowers()
-    end,
-})
+makeToggle(TowerGroup, "Auto Input Towers", "AutoInputTowers", true)
 for _, towerName in ipairs(towerNames) do
     makeInput(TowerGroup, towerName, "Tower_" .. towerName, Towers[towerName] or "", {
         Placeholder = "Tower ID",
@@ -7535,8 +7670,8 @@ bindFileToggle("AutoSummon", "AutoSummon", runAutoSummon)
 bindFileToggle("AutoBounty", "AutoBounty", runAutoBounty)
 bindFileToggle("AutoEmilia", "AutoEmilia", runAutoEmilia)
 bindFileToggle("AutoInputTowers", "AutoInputTowers", function()
-    task.wait(0.75)
-    autoInputTowers()
+    task.wait(0.25)
+    autoInputTowers({ quiet = true })
 end)
 
 bindFileToggle("AutoInfinityCastle", "AutoInfinityCastle", function()
@@ -7614,6 +7749,7 @@ task.spawn(function()
 loadSavedSettings()
 hookAutoSave()
 setupMessageCleaner()
+startHotbarAutoSync()
 
 task.defer(function()
     task.wait(2)
