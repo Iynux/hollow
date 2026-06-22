@@ -1,4 +1,4 @@
--- HOLLOW_BUILD:535ece0fbff6
+-- HOLLOW_BUILD:5fb22e3c3ce0
 -- Hollow
 -- UI: Neverlose.cc by 4lpaca
 
@@ -990,6 +990,85 @@ getgenv().HollowFireRemote = function(remoteName, ...)
     return ok
 end
 
+local RunService = game:GetService("RunService")
+local raidSummonLoops = {}
+
+local function isRaidSummonToggleOn(flag)
+    if Toggles[flag] then
+        return Toggles[flag].Value == true
+    end
+    return readToggle(flag, false)
+end
+
+local function fireSummonEnemy(enemyId)
+    if getgenv().HollowFireRemote then
+        getgenv().HollowFireRemote("PlayerSummonEnemy", enemyId)
+        return
+    end
+
+    local remote = getgenv().HollowGetGlobalInitRemote
+        and getgenv().HollowGetGlobalInitRemote("PlayerSummonEnemy", 5)
+    if remote then
+        remote:FireServer(enemyId)
+    end
+end
+
+local function stopRaidSummonSpam(flag)
+    local entry = raidSummonLoops[flag]
+    if not entry then
+        return
+    end
+
+    if entry.conn then
+        entry.conn:Disconnect()
+    end
+    raidSummonLoops[flag] = nil
+end
+
+local function startRaidSummonSpam(flag, enemyId)
+    stopRaidSummonSpam(flag)
+
+    local firesPerHeartbeat = 12
+    local conn
+    conn = RunService.Heartbeat:Connect(function()
+        if Library.Unloaded or not isRaidSummonToggleOn(flag) then
+            stopRaidSummonSpam(flag)
+            return
+        end
+
+        for _ = 1, firesPerHeartbeat do
+            pcall(fireSummonEnemy, enemyId)
+        end
+    end)
+
+    raidSummonLoops[flag] = { conn = conn, enemyId = enemyId }
+end
+
+local RAID_SUMMON_DEFS = {
+    { flag = "BleachRaidSummon1", label = "Bleach Summon 1", enemyId = "BleachRaidSummon1", section = "Bleach" },
+    { flag = "BleachRaidSummon2", label = "Bleach Summon 2", enemyId = "BleachRaidSummon2", section = "Bleach" },
+    { flag = "BleachRaidSummon3", label = "Bleach Summon 3", enemyId = "BleachRaidSummon3", section = "Bleach" },
+    { flag = "BleachRaidSummon4", label = "Bleach Summon 4", enemyId = "BleachRaidSummon4", section = "Bleach" },
+    { flag = "SJWRaidSummon1", label = "SJW Summon 1", enemyId = "RaidSummon1", section = "SJW" },
+    { flag = "SJWRaidSummon2", label = "SJW Summon 2", enemyId = "RaidSummon2", section = "SJW" },
+    { flag = "SJWRaidSummon3", label = "SJW Summon 3", enemyId = "RaidSummon3", section = "SJW" },
+    { flag = "SJWRaidSummon4", label = "SJW Summon 4", enemyId = "RaidSummon4", section = "SJW" },
+}
+
+local function restoreRaidSummonToggles()
+    for _, def in ipairs(RAID_SUMMON_DEFS) do
+        if isRaidSummonToggleOn(def.flag) then
+            startRaidSummonSpam(def.flag, def.enemyId)
+        end
+    end
+end
+
+local function stopAllRaidSummonSpam()
+    for flag in pairs(raidSummonLoops) do
+        stopRaidSummonSpam(flag)
+    end
+end
+
 getgenv().HollowFireEmiliaAbility = function()
     return false
 end
@@ -1222,6 +1301,9 @@ local mapToggleDefs = {
     { toggle = "AutoWisteriaForest", label = "Auto Wisteria Forest", file = "AutoWisteriaForest", map = "WisteriaForest", body = "WisteriaForest.lua", aliases = { "Wisteria_Forest" }, implemented = true, randomLobby = true },
     { toggle = "AutoValleyOfTheEnd", label = "Auto Valley of the End", file = "AutoValleyOfTheEnd", map = "ValleyOfTheEnd", body = "ValleyOfTheEnd.lua", aliases = { "Valley_of_the_End", "ValleyOfTheEnd" }, implemented = true, randomLobby = true },
     { toggle = "AutoPlanetNamek", label = "Auto Planet Namek", file = "AutoPlanetNamek", map = "PlanetNamek", body = "PlanetNamek.lua", aliases = { "Namek", "Planet_Namek" }, implemented = true },
+    { toggle = "AutoAizRaid", label = "Auto Aiz Raid", file = "AutoAizRaid", map = "Aizen", body = "GenericMap.lua", aliases = { "Aiz_Raid", "AizRaid", "Aiz Raid", "Aizen", "Aizen Raid" }, implemented = true },
+    { toggle = "AutoSJWRaid", label = "Auto SJW Raid", file = "AutoSJWRaid", map = "ShadowMonarch", body = "GenericMap.lua", aliases = { "SJW_Raid", "SJWRaid", "SJW Raid", "Sung Jin Woo", "Shadow Monarch" }, implemented = true },
+    { toggle = "AutoBorosRaid", label = "Auto Boros Raid", file = "AutoBorosRaid", map = "Boros", body = "GenericMap.lua", aliases = { "Boros_Raid", "BorosRaid", "Boros Raid" }, implemented = true },
 }
 
 local function getAllMapDexDefs()
@@ -2215,6 +2297,22 @@ local VIM = cloneref(game:GetService("VirtualInputManager"))
 local DUNGEON_RETURN_AT_FLOOR = 12
 local LOBBY_WAIT = 2.5
 
+local function isAutoDungeonEnabled()
+    if getgenv().HollowBountyActive then
+        return false
+    end
+    if Toggles and Toggles.AutoDungeon and Toggles.AutoDungeon.Value then
+        return true
+    end
+    if readfile and isfile then
+        local path = "AutoDungeon_" .. lp.Name .. ".Hollow"
+        if isfile(path) and readfile(path) == "true" then
+            return true
+        end
+    end
+    return false
+end
+
 local GlobalInit = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("GlobalInit"):WaitForChild("RemoteEvents")
 
 local function fireGlobal(remoteName, ...)
@@ -2516,6 +2614,11 @@ local function runBossCycle()
 end
 
 while true do
+    if not isAutoDungeonEnabled() then
+        task.wait(1)
+        continue
+    end
+
     if not IsDungeon() then
         enterDungeonFromLobby()
         if not IsDungeon() then
@@ -2937,8 +3040,13 @@ local function scoreMapCandidate(def, desc, source, cf)
         score = score + 50
     end
 
-    if path:find("DungeonLobby", 1, true) and not path:find("GamemodeRules", 1, true) then
-        score = score + 15
+    if path:find("Dungeon", 1, true) and not path:find("GamemodeRules", 1, true) then
+        local mapId = def and tostring(def.map or ""):lower() or ""
+        if mapId:find("dungeon", 1, true) then
+            score = score + 15
+        else
+            return -1
+        end
     end
 
     return score
@@ -4680,6 +4788,22 @@ local function saveEmiliaPosition(tower)
     end
 end
 
+local function resetEmiliaTracking(tower)
+    emiliaCachedPlacedKey = nil
+    emiliaLastTowerKey = nil
+    emiliaLastCastTowerKey = nil
+    emiliaLastAbilityAt = 0
+    emiliaActivateRemote = nil
+    emiliaCasting = false
+
+    if tower then
+        saveEmiliaPosition(tower)
+        emiliaLastTowerKey = tower.Name
+        emiliaCachedPlacedKey = tower.Name
+        ensureEmiliaInGameAuto(tower)
+    end
+end
+
 local function waitForEmiliaTowerGone(towerName)
     for _ = 1, 40 do
         local towersFolder = workspace:FindFirstChild("EntityModels") and workspace.EntityModels:FindFirstChild("Towers")
@@ -4759,8 +4883,7 @@ local function ensureEmiliaPlaced()
     local tower = waitForNewEmiliaTower(previousKey)
 
     if tower then
-        emiliaLastTowerKey = tower.Name
-        emiliaCachedPlacedKey = tower.Name
+        resetEmiliaTracking(tower)
     else
         emiliaLastTowerKey = nil
     end
@@ -4801,8 +4924,7 @@ local function replaceEmiliaAtSameSpot(tower)
 
     local newTower = waitForNewEmiliaTower(previousName)
     if newTower then
-        emiliaLastTowerKey = newTower.Name
-        emiliaCachedPlacedKey = newTower.Name
+        resetEmiliaTracking(newTower)
     else
         emiliaLastTowerKey = nil
     end
@@ -4842,13 +4964,40 @@ local function hookEmiliaAutoReplace(isAutoEmiliaEnabled)
         end
 
         emiliaCachedPlacedKey = nil
+        emiliaLastCastTowerKey = nil
+        emiliaLastAbilityAt = 0
+        emiliaActivateRemote = nil
 
         task.defer(function()
             task.wait(0.1)
-            if emiliaCasting or getCachedEmiliaTower() then
+            if emiliaCasting or not isAutoEmiliaEnabled() then
                 return
             end
-            ensureEmiliaPlaced()
+            if getCachedEmiliaTower() then
+                return
+            end
+            local placed = ensureEmiliaPlaced()
+            if placed then
+                resetEmiliaTracking(placed)
+            end
+        end)
+    end
+
+    local function onEmiliaTowerAdded(child)
+        if emiliaCasting or not isAutoEmiliaEnabled() then
+            return
+        end
+        task.defer(function()
+            if not child or not child.Parent then
+                return
+            end
+            if not towerLooksLikeEmilia(child) or not towerOwnedByLocalPlayer(child) then
+                return
+            end
+            if emiliaLastTowerKey == child.Name and emiliaCachedPlacedKey then
+                return
+            end
+            resetEmiliaTracking(child)
         end)
     end
 
@@ -4858,6 +5007,7 @@ local function hookEmiliaAutoReplace(isAutoEmiliaEnabled)
         end
         towers:SetAttribute("HollowEmiliaReplaceHook", true)
         towers.ChildRemoved:Connect(onEmiliaTowerRemoved)
+        towers.ChildAdded:Connect(onEmiliaTowerAdded)
     end
 
     local entityModels = workspace:FindFirstChild("EntityModels")
@@ -4922,7 +5072,7 @@ local function getCachedEmiliaTower()
         end
     end
 
-    return nil
+    return findPlacedEmiliaTower()
 end
 
 local function resolveEmiliaTowerForLoop()
@@ -4969,6 +5119,8 @@ local function castEmiliaBlizzard(tower)
     if ok then
         emiliaCachedPlacedKey = towerKey
         emiliaLastTowerKey = towerKey
+        emiliaLastCastTowerKey = towerKey
+        emiliaLastAbilityAt = tick()
     end
 
     return ok
@@ -4999,13 +5151,15 @@ local function runLoop()
                 return
             end
 
-            if emiliaLastTowerKey ~= tower.Name or not emiliaSavedPosition then
+            if emiliaLastTowerKey ~= tower.Name then
+                resetEmiliaTracking(tower)
+            elseif not emiliaSavedPosition then
                 saveEmiliaPosition(tower)
-                emiliaLastTowerKey = tower.Name
-                emiliaCachedPlacedKey = tower.Name
             end
 
-            castEmiliaBlizzard(tower)
+            if isEmiliaBlizzardReady(tower) then
+                castEmiliaBlizzard(tower)
+            end
         end)
         task.wait(EMILIA_FIRE_INTERVAL)
     end
@@ -5273,6 +5427,17 @@ local function findMapInText(blob)
         return mapName, gamemode
     end
 
+    local lower = blob:lower()
+    if lower:find("aiz", 1, true) or lower:find("aizen", 1, true) then
+        return "Aiz Raid", gamemode or "Hard"
+    end
+    if lower:find("sjw", 1, true) or lower:find("shadow monarch", 1, true) or lower:find("sung jin", 1, true) then
+        return "SJW Raid", gamemode or "Hard"
+    end
+    if lower:find("boros", 1, true) then
+        return "Boros Raid", gamemode or "Hard"
+    end
+
     for _, def in ipairs(mapToggleDefs) do
         if not def.implemented then
             continue
@@ -5442,6 +5607,35 @@ end
 local BOUNTY_MAP_GAMEMODE = "Hard"
 local BOUNTY_FILE_KEY = "AutoBounty"
 local bountyMapActive = false
+local bountyActiveMapFile = nil
+
+local BOUNTY_LOADOUT_BY_FILE = {
+    AutoLasNochesHard = "Las Noches",
+    AutoRuinedFutureCity = "Ruined Future City",
+    AutoAizRaid = "Aiz Raid",
+    AutoSJWRaid = "SJW Raid",
+    AutoBorosRaid = "Boros Raid",
+}
+
+local function disableConflictingAutomationForBounty()
+    writeToggle("AutoDungeon", false)
+    writeToggle("AutoInfinityCastle", false)
+    if Toggles.AutoDungeon then
+        Toggles.AutoDungeon:SetValue(false)
+    end
+    if Toggles.AutoInfinityCastle then
+        Toggles.AutoInfinityCastle:SetValue(false)
+    end
+end
+
+local function clearBountyMapRun()
+    if bountyActiveMapFile then
+        writeToggle(bountyActiveMapFile, false)
+        bountyActiveMapFile = nil
+    end
+    bountyMapActive = false
+    getgenv().HollowBountyActive = false
+end
 
 local function makeBountyJoinDef(sourceDef)
     return {
@@ -5462,9 +5656,17 @@ local function startBountyMapRun(sourceDef, mapGamemode)
     end
 
     mapGamemode = mapGamemode or BOUNTY_MAP_GAMEMODE
+    disableConflictingAutomationForBounty()
+    getgenv().HollowBountyActive = true
 
     writeToggle(BOUNTY_FILE_KEY, true)
     writeToggle(sourceDef.file, true)
+    bountyActiveMapFile = sourceDef.file
+
+    local loadoutName = BOUNTY_LOADOUT_BY_FILE[sourceDef.file]
+    if loadoutName and applyLoadout then
+        pcall(applyLoadout, loadoutName)
+    end
 
     local joinDef = makeBountyJoinDef(sourceDef)
 
@@ -5492,7 +5694,7 @@ local function startBountyMapRun(sourceDef, mapGamemode)
         end
     end
 
-    if not joinOk and not (getgenv().HollowIsInMatch and getgenv().HollowIsInMatch()) then
+        if not joinOk and not (getgenv().HollowIsInMatch and getgenv().HollowIsInMatch()) then
         if Library then
             Library:Notify({
                 Title = "Auto Bounty",
@@ -5500,6 +5702,7 @@ local function startBountyMapRun(sourceDef, mapGamemode)
                 Time = 6,
             })
         end
+        clearBountyMapRun()
         return false
     end
 
@@ -5710,17 +5913,18 @@ local function runLoop()
                 fireBountyRemote("PlayerClaimBounty")
             end
             getgenv().ReturnToLobby(BOUNTY_FILE_KEY)
-            bountyMapActive = false
-            writeToggle(BOUNTY_FILE_KEY, false)
+            clearBountyMapRun()
+            writeToggle(BOUNTY_FILE_KEY, true)
             task.wait(10)
         elseif bountyMapActive or (getgenv().HollowIsInMatch and getgenv().HollowIsInMatch()) then
             task.wait(1)
         else
+            disableConflictingAutomationForBounty()
             local targetDef, mapGamemode = lobbyBountySetup()
             if targetDef and isAutoBountyEnabled() then
                 startBountyMapRun(targetDef, mapGamemode)
             else
-                bountyMapActive = false
+                clearBountyMapRun()
                 task.wait(1)
             end
         end
@@ -5729,7 +5933,7 @@ local function runLoop()
     end
 
     writeToggle(BOUNTY_FILE_KEY, false)
-    bountyMapActive = false
+    clearBountyMapRun()
 end
 
 return runLoop
@@ -7058,6 +7262,9 @@ restoreEnabledFeatures = function()
             runScriptModule("InfinityCastle.lua")
         end,
         AutoDungeon = function()
+            if readToggle("AutoBounty", false) or getgenv().HollowBountyActive then
+                return
+            end
             task.wait(getgenv().mapjoindelay)
             runScriptModule("Dungeons.lua")
         end,
@@ -7112,10 +7319,17 @@ restoreEnabledFeatures = function()
     loadingSettings = false
 
     for toggleName, action in pairs(restoreActions) do
-        local toggle = Toggles[toggleName]
-        if toggle and toggle.Value then
-            writeToggle(fileKeys[toggleName] or toggleName, true)
-            task.spawn(action)
+        if toggleName == "AutoDungeon" and (readToggle("AutoBounty", false) or getgenv().HollowBountyActive) then
+            writeToggle("AutoDungeon", false)
+            if Toggles.AutoDungeon then
+                Toggles.AutoDungeon:SetValue(false)
+            end
+        else
+            local toggle = Toggles[toggleName]
+            if toggle and toggle.Value then
+                writeToggle(fileKeys[toggleName] or toggleName, true)
+                task.spawn(action)
+            end
         end
     end
 end
@@ -7250,6 +7464,16 @@ local function makeDropdown(section, label, flag, values, default, callback)
     return obj
 end
 
+local function bindRaidSummonToggle(section, def)
+    makeToggle(section, def.label, def.flag, false, function(enabled)
+        if enabled then
+            startRaidSummonSpam(def.flag, def.enemyId)
+        else
+            stopRaidSummonSpam(def.flag)
+        end
+    end)
+end
+
 Window = NeverLose:CreateWindow({
     Logo = WindowIcon,
     Name = "Hollow",
@@ -7369,6 +7593,7 @@ local dungeonTab = Window:AddTab({ Icon = "sword", Name = "Dungeon" })
 local pvpTab = Window:AddTab({ Icon = "crosshairs", Name = "PvP" })
 local towerTab = Window:AddTab({ Icon = "pencil", Name = "Tower IDs" })
 local loadoutsTab = Window:AddTab({ Icon = "folder", Name = "Loadouts" })
+local raidsTab = Window:AddTab({ Icon = "skull", Name = "Raids" })
 local menuTab = Window:AddTab({ Icon = "gear", Name = "Menu" })
 
 local Autos = mainTab:AddSection({ Name = "AUTOS", Position = "left" })
@@ -7578,6 +7803,14 @@ for _, loadoutName in ipairs(LOADOUT_NAMES) do
     })
 end
 
+local BleachSection = raidsTab:AddSection({ Name = "BLEACH", Position = "left" })
+local SJWSection = raidsTab:AddSection({ Name = "SJW", Position = "right" })
+
+for _, def in ipairs(RAID_SUMMON_DEFS) do
+    local section = def.section == "Bleach" and BleachSection or SJWSection
+    bindRaidSummonToggle(section, def)
+end
+
 local MenuGroup = menuTab:AddSection({ Name = "MENU", Position = "left" })
 MenuGroup:AddButton({
     Name = "Unload",
@@ -7666,6 +7899,7 @@ end
 
 task.defer(styleNeverloseRowControls)
 task.delay(0.75, styleNeverloseRowControls)
+task.defer(restoreRaidSummonToggles)
 
 local simpleToggleNames = {
     "AutoDragos",
@@ -7694,6 +7928,10 @@ bindFileToggle("AutoInfinityCastle", "AutoInfinityCastle", function()
 end)
 
 bindFileToggle("AutoDungeon", "AutoDungeon", function()
+    if readToggle("AutoBounty", false) or getgenv().HollowBountyActive then
+        writeToggle("AutoDungeon", false)
+        return
+    end
     task.wait(getgenv().mapjoindelay)
     runScriptModule("Dungeons.lua")
 end)
@@ -7805,6 +8043,7 @@ task.spawn(function()
 end)
 
 Library:OnUnload(function()
+    stopAllRaidSummonSpam()
     for _, name in ipairs(simpleToggleNames) do
         writeToggle(name, false)
     end
