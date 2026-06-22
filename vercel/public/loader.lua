@@ -495,14 +495,41 @@ local function compileChunk(source)
     return fn, err
 end
 
+local function isStaleScriptBody(body)
+    if isScriptErrorBody(body) then
+        return true
+    end
+    if body:find("Input Towers Now", 1, true) then
+        return true
+    end
+    if not body:match("^%-%-%s*HOLLOW_BUILD:") then
+        return true
+    end
+    return false
+end
+
 local function loadMainScript(token)
-    local scriptRes = httpRequest(
+    local sources = {
+        API .. "/hollow.lua?_=" .. tostring(tick()),
         API .. "/api/script?token=" .. HttpService:UrlEncode(token) .. "&_=" .. tostring(tick()),
-        "GET"
-    )
-    if not scriptRes or not scriptRes.Body or isScriptErrorBody(scriptRes.Body) then
-        local preview = scriptRes and scriptRes.Body and (scriptRes.Body:sub(1, 120):gsub("%s+", " ")) or "no response"
-        return warn("[Hollow] Script fetch failed:", preview)
+    }
+
+    local customUrl = getgenv().HollowScriptUrl
+    if type(customUrl) == "string" and customUrl ~= "" then
+        table.insert(sources, 1, customUrl .. (customUrl:find("?", 1, true) and "&" or "?") .. "_=" .. tostring(tick()))
+    end
+
+    local scriptRes
+    for _, url in ipairs(sources) do
+        local res = httpRequest(url, "GET")
+        if res and res.Body and not isStaleScriptBody(res.Body) then
+            scriptRes = res
+            break
+        end
+    end
+
+    if not scriptRes or not scriptRes.Body then
+        return warn("[Hollow] Script fetch failed — push vercel/public/hollow.lua to GitHub, then open /hollow.lua in browser to verify")
     end
 
     local fn, err = compileChunk(scriptRes.Body)

@@ -50,6 +50,7 @@ function writeHollowCopies(body, hash) {
   const targets = [
     path.join(vercelRoot, "hollow.lua"),
     path.join(privateDir, "hollow.lua"),
+    path.join(vercelRoot, "public", "hollow.lua"),
   ];
 
   for (const dest of targets) {
@@ -91,6 +92,12 @@ const loader = copyLoader(
   path.join(vercelRoot, "public", "loader.lua"),
   "loader.lua"
 );
+
+if (loader) {
+  const loaderV2 = path.join(vercelRoot, "public", "hollow-loader.lua");
+  fs.writeFileSync(loaderV2, loader.body, "utf8");
+  console.log(`[sync] hollow-loader.lua -> ${loaderV2}`);
+}
 
 if (!hollow) {
   console.warn("[sync] Warning: hollow.lua not found — /api/script will fail until vercel/hollow.lua exists.");
