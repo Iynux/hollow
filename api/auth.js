@@ -1,8 +1,8 @@
-import { hashPassword, normalizeUsername, randomToken } from "../../lib/crypto.js";
-import { accountKey, getRedis, tokenKey } from "../../lib/redis.js";
-import { json, readJsonBody } from "../../lib/http.js";
+const { hashPassword, normalizeUsername, randomToken } = require("../lib/crypto");
+const { accountKey, getRedis, tokenKey } = require("../lib/redis");
+const { json, readJsonBody } = require("../lib/http");
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
     return json(res, 405, { ok: false, error: "POST only" });
   }
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
       return json(res, 400, { ok: false, error: "Missing username, password, or hwid" });
     }
 
-    const redis = getRedis();
+    const redis = await getRedis();
     const account = await redis.get(accountKey(username));
     if (!account) {
       return json(res, 401, { ok: false, error: "Invalid login" });
@@ -61,4 +61,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return json(res, 500, { ok: false, error: String(err?.message || err) });
   }
-}
+};

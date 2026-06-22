@@ -9,15 +9,44 @@ const root = path.join(__dirname, "..", "..");
 const keysPath = path.join(root, "discord-bot", "keys.json");
 const accountsPath = path.join(root, "discord-bot", "accounts.json");
 
-const redis = Redis.fromEnv();
+function resolveRedisConfig() {
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL ||
+    process.env.KV_REST_API_URL ||
+    process.env.KV_URL;
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN ||
+    process.env.KV_REST_API_TOKEN;
+
+  if (url && token) {
+    return new Redis({ url, token });
+  }
+  return Redis.fromEnv();
+}
+
+const redis = resolveRedisConfig();
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function keyAccountKey(keyValue) {
+  return `keyacct:${String(keyValue).toUpperCase()}`;
+}
+
 async function main() {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-    throw new Error("Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in .env");
+  const hasKv =
+    process.env.UPSTASH_REDIS_REST_URL ||
+    process.env.KV_REST_API_URL ||
+    process.env.KV_URL;
+  const hasToken =
+    process.env.UPSTASH_REDIS_REST_TOKEN ||
+    process.env.KV_REST_API_TOKEN;
+
+  if (!hasKv || !hasToken) {
+    throw new Error(
+      "Set Vercel KV or Upstash env vars (KV_REST_API_URL + KV_REST_API_TOKEN, or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN)"
+    );
   }
 
   let keyCount = 0;
@@ -45,11 +74,12 @@ async function main() {
     const accountsData = readJson(accountsPath);
     for (const entry of accountsData.accounts || []) {
       const username = String(entry.username || "").trim().toLowerCase();
+      const keyValue = String(entry.key || "").trim().toUpperCase();
       if (!username) continue;
       await redis.set(`account:${username}`, {
         username,
         password_hash: entry.password_hash,
-        key: String(entry.key || "").trim().toUpperCase(),
+        key: keyValue,
         hwid: entry.hwid ?? null,
         discord_id: entry.discord_id ?? null,
         discord_name: entry.discord_name ?? null,
@@ -59,11 +89,14 @@ async function main() {
         roblox_user: entry.roblox_user ?? null,
         roblox_user_id: entry.roblox_user_id ?? null,
       });
+      if (keyValue) {
+        await redis.set(keyAccountKey(keyValue), username);
+      }
       accountCount += 1;
     }
   }
 
-  console.log(`Imported ${keyCount} keys and ${accountCount} accounts into Upstash Redis.`);
+  console.log(`Imported ${keyCount} keys and ${accountCount} accounts into Vercel KV / Redis.`);
 }
 
 main().catch((err) => {

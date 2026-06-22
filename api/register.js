@@ -1,8 +1,8 @@
-import { hashPassword, normalizeKey, normalizeUsername } from "../lib/crypto.js";
-import { accountKey, getRedis, keyRecordKey } from "../lib/redis.js";
-import { json, readJsonBody } from "../lib/http.js";
+const { hashPassword, normalizeKey, normalizeUsername } = require("../lib/crypto");
+const { accountKey, getRedis, keyRecordKey, linkKeyToAccount } = require("../lib/redis");
+const { json, readJsonBody } = require("../lib/http");
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
     return json(res, 405, { ok: false, error: "POST only" });
   }
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       return json(res, 400, { ok: false, error: "Password must be at least 4 characters" });
     }
 
-    const redis = getRedis();
+    const redis = await getRedis();
     const existingAccount = await redis.get(accountKey(username));
     if (existingAccount) {
       return json(res, 409, { ok: false, error: "Username already taken" });
@@ -57,6 +57,7 @@ export default async function handler(req, res) {
     };
 
     await redis.set(accountKey(username), account);
+    await linkKeyToAccount(redis, keyValue, username);
 
     keyRecord.status = "claimed";
     keyRecord.discord_id = discordId;
@@ -68,4 +69,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return json(res, 500, { ok: false, error: String(err?.message || err) });
   }
-}
+};

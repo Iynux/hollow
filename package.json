@@ -1,12 +1,13 @@
 {
   "name": "hollow-hypnosis",
   "private": true,
-  "type": "module",
   "scripts": {
-    "build": "node scripts/prepare-deploy.mjs",
-    "import:redis": "node scripts/import-to-redis.mjs"
+    "import:kv": "node scripts/import-to-redis.mjs",
+    "import:redis": "node scripts/import-to-redis.mjs",
+    "seed:kv": "python scripts/seed-kv.py"
   },
   "dependencies": {
-    "@upstash/redis": "^1.34.3"
+    "@upstash/redis": "^1.34.3",
+    "redis": "^4.7.0"
   }
 }

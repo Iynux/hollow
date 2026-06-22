@@ -1,8 +1,8 @@
-import { normalizeKey, normalizeUsername } from "../../lib/crypto.js";
-import { accountKey, getRedis } from "../../lib/redis.js";
-import { json, readJsonBody, requireAdmin } from "../../lib/http.js";
+const { normalizeKey, normalizeUsername } = require("../../lib/crypto");
+const { accountKey, findAccountByKey, getRedis } = require("../../lib/redis");
+const { json, readJsonBody, requireAdmin } = require("../../lib/http");
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
     return json(res, 405, { ok: false, error: "POST only" });
   }
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const username = normalizeUsername(body.username);
     const keyValue = normalizeKey(body.key);
 
-    const redis = getRedis();
+    const redis = await getRedis();
     let account = null;
 
     if (username) {
@@ -23,14 +23,7 @@ export default async function handler(req, res) {
     }
 
     if (!account && keyValue) {
-      const keys = await redis.keys("account:*");
-      for (const redisKey of keys) {
-        const item = await redis.get(redisKey);
-        if (item && normalizeKey(item.key) === keyValue) {
-          account = item;
-          break;
-        }
-      }
+      account = await findAccountByKey(redis, keyValue);
     }
 
     if (!account) {
@@ -46,4 +39,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return json(res, 500, { ok: false, error: String(err?.message || err) });
   }
-}
+};

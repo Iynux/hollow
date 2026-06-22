@@ -1,6 +1,9 @@
 {
   "version": 2,
-  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/", "destination": "/api/index" },
+    { "source": "/loader.lua", "destination": "/api/loader" }
+  ],
   "headers": [
     {
       "source": "/api/script",
@@ -9,7 +12,7 @@
       ]
     },
     {
-      "source": "/loader.lua",
+      "source": "/api/loader",
       "headers": [
         { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
         { "key": "Cache-Control", "value": "no-cache" }

@@ -1,8 +1,8 @@
-import { normalizeUsername } from "../../lib/crypto.js";
-import { accountKey, getRedis, keyRecordKey } from "../../lib/redis.js";
-import { json, readJsonBody, requireAdmin } from "../../lib/http.js";
+const { normalizeUsername } = require("../../lib/crypto");
+const { accountKey, getRedis, keyRecordKey, linkKeyToAccount } = require("../../lib/redis");
+const { json, readJsonBody, requireAdmin } = require("../../lib/http");
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
     return json(res, 405, { ok: false, error: "POST only" });
   }
@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const accounts = Array.isArray(body.accounts) ? body.accounts : [];
     const keys = Array.isArray(body.keys) ? body.keys : [];
-    const redis = getRedis();
+    const redis = await getRedis();
     let accountCount = 0;
     let keyCount = 0;
 
@@ -49,6 +49,7 @@ export default async function handler(req, res) {
         roblox_user: entry.roblox_user ?? null,
         roblox_user_id: entry.roblox_user_id ?? null,
       });
+      await linkKeyToAccount(redis, entry.key, username);
       accountCount += 1;
     }
 
@@ -60,4 +61,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return json(res, 500, { ok: false, error: String(err?.message || err) });
   }
-}
+};
