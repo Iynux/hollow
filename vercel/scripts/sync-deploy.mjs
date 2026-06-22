@@ -94,9 +94,7 @@ const loader = copyLoader(
 );
 
 if (loader) {
-  const loaderV2 = path.join(vercelRoot, "public", "hollow-loader.lua");
-  fs.writeFileSync(loaderV2, loader.body, "utf8");
-  console.log(`[sync] hollow-loader.lua -> ${loaderV2}`);
+  console.log(`[sync] loader.lua (static) -> ${path.join(vercelRoot, "public", "loader.lua")}`);
 }
 
 if (!hollow) {

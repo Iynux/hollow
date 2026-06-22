@@ -1,4 +1,4 @@
--- HOLLOW_BUILD:6a05c1614547
+-- HOLLOW_BUILD:e7d763496e16
 -- Hollow
 -- UI: Neverlose.cc by 4lpaca
 
@@ -2432,7 +2432,7 @@ end)
 
 -- Loadout: Ulq, Ulq2, Rukia, Shieldbreaker, Reaper (suit), GoldenDrago
 local DUNGEON_PLACEMENTS = {
-    Ulq = Vector3.new(-142.8823699951172, -290.74853515625, -389.1006774902344),
+    Ulq = Vector3.new(-148.8823699951172, -286.74853515625, -389.1006774902344),
     Ulq2 = Vector3.new(-139.7054901123047, -287.4533996582031, -350.2327880859375),
     Rukia = Vector3.new(-119.99340057373047, -287.60052490234375, -430.9882507324219),
     Shieldbreaker = {
@@ -2453,11 +2453,13 @@ local DUNGEON_PLACEMENTS = {
 
 local function runBossCycle()
     local bossSpawned = false
+    local ulqPlacedOnce = false
 
     local t1 = task.spawn(function()
         while not bossSpawned and IsDungeon() do
             fireGlobal("PlayerVoteToStartMatch")
             PlaceTowerExact("Ulq", DUNGEON_PLACEMENTS.Ulq)
+            ulqPlacedOnce = true
             PlaceTowerExact("Ulq2", DUNGEON_PLACEMENTS.Ulq2)
             PlaceTowerExact("Rukia", DUNGEON_PLACEMENTS.Rukia)
             ClickBestCard()
@@ -2473,9 +2475,18 @@ local function runBossCycle()
     end)
 
     local t3 = task.spawn(function()
+        while not ulqPlacedOnce and not bossSpawned and IsDungeon() do
+            task.wait(0.15)
+        end
         while not bossSpawned and IsDungeon() do
-            task.wait(15)
-            placeAllExact("Reaper", DUNGEON_PLACEMENTS.Reaper)
+            for _, pos in ipairs(DUNGEON_PLACEMENTS.Reaper) do
+                if bossSpawned or not IsDungeon() then
+                    break
+                end
+                PlaceTowerExact("Reaper", pos)
+                task.wait(4)
+            end
+            task.wait(6)
         end
     end)
 
@@ -4223,7 +4234,8 @@ local function matchTowerFromText(text)
     if blob:find("shieldbreaker") or blob:find("shield breaker") or (blob:find("cyborg") and blob:find("shield")) then
         return "Shieldbreaker"
     end
-    if blob:find("reaper") or blob:find("scythe") or (blob:find("cyborg") and blob:find("reap")) then
+    if blob:find("reaper") or blob:find("scythe") or blob:find("suit", 1, true)
+        or (blob:find("cyborg") and blob:find("reap")) then
         return "Reaper"
     end
     if blob:find("cyborg") then
@@ -7240,7 +7252,7 @@ end
 
 Window = NeverLose:CreateWindow({
     Logo = WindowIcon,
-    Name = "Hollow" .. (getgenv().HOLLOW_BUILD and (" " .. tostring(getgenv().HOLLOW_BUILD)) or ""),
+    Name = "Hollow",
     Content = "",
     Size = NeverLose.Scales.Default,
     ConfigFolder = "Hollow/configs",
@@ -7326,12 +7338,16 @@ local function setupWatermark()
     end)
 
     task.spawn(function()
+        local buildTag = ""
+        if getgenv().HOLLOW_BUILD then
+            buildTag = tostring(getgenv().HOLLOW_BUILD):sub(1, 6) .. " · "
+        end
         while gui.Parent and not Library.Unloaded do
             local ping = "--"
             pcall(function()
                 ping = tostring(math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()))
             end)
-            label.Text = "Hollow · " .. ping .. "ms"
+            label.Text = "Hollow · " .. buildTag .. ping .. "ms"
             task.wait(1)
         end
     end)
