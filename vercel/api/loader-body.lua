@@ -1,11 +1,44 @@
--- Hollow loader — login UI then fetch main script
+-- Hollow loader — login UI then fetch main script (auto-execute safe)
 local API = "https://fuckmark.vercel.app"
 local AUTH_FOLDER = "Hollow"
-local AUTH_FILE = AUTH_FOLDER .. "/session_" .. game:GetService("Players").LocalPlayer.Name .. ".Hollow"
+
+if getgenv().HollowLoaderRunning then
+    return
+end
+getgenv().HollowLoaderRunning = true
+
+local function releaseLoaderLock()
+    getgenv().HollowLoaderRunning = false
+end
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
 local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    LocalPlayer = Players.PlayerAdded:Wait()
+end
+
+local AUTH_FILE = AUTH_FOLDER .. "/session_" .. LocalPlayer.Name .. ".Hollow"
+getgenv().HollowLoaded = nil
+
+local function queueAutoExecute()
+    local src = 'loadstring(game:HttpGet("' .. API .. '/loader.lua?_=" .. tick()))()'
+    local queueFn = queue_on_teleport
+        or (syn and syn.queue_on_teleport)
+        or (fluxus and fluxus.queue_on_teleport)
+        or (krnl and krnl.queue_on_teleport)
+    if type(queueFn) ~= "function" and getgenv then
+        queueFn = getgenv().queue_on_teleport
+    end
+    if type(queueFn) == "function" then
+        pcall(queueFn, src)
+    end
+end
 
 local function decodeJson(body)
     local ok, data = pcall(function()
@@ -547,7 +580,15 @@ if not token then
 end
 
 if not token then
+    releaseLoaderLock()
     return warn("[Hollow] Authentication required.")
 end
 
-loadMainScript(token)
+queueAutoExecute()
+
+local ok, err = pcall(loadMainScript, token)
+releaseLoaderLock()
+
+if not ok then
+    warn("[Hollow] Main script failed:", err)
+end
