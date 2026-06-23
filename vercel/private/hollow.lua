@@ -1,4 +1,4 @@
--- HOLLOW_BUILD:cdbe1636aa2d
+-- HOLLOW_BUILD:a45d6189b9b0
 -- Hollow
 -- UI: Neverlose.cc by 4lpaca
 
@@ -688,48 +688,42 @@ end
 Towers = Towers or {
     Rukia = "",
     Ulq = "",
-    Ulq2 = "",
     Ragna = "",
     Primordial = "",
-    Reaper = "",
-    GoldenDrago = "",
     RageDrago = "",
+    Ulq2 = "",
+    GoldenDrago = "",
     Shieldbreaker = "",
-    Emilia = "",
-    HeroOfHell = "",
+    Reaper = "",
 }
+
+local TOWER_ID_UI_NAMES = { "Rukia", "Ulq", "Ragna", "Primordial", "RageDrago" }
 
 local HOTBAR_SLOT_COUNT = 6
 TowerSlots = TowerSlots or {}
-for slotIndex = 1, HOTBAR_SLOT_COUNT do
-    TowerSlots[slotIndex] = TowerSlots[slotIndex] or ""
-end
 
 local TOWER_ROLE_SLOTS = {
     Ulq = 1,
-    Ulq2 = 2,
+    Ulq2 = 1,
     Rukia = 3,
     Shieldbreaker = 4,
     Reaper = 5,
     RageDrago = 6,
     GoldenDrago = 6,
     Primordial = 2,
-    Ragna = 3,
-    HeroOfHell = 2,
-    Emilia = 2,
-    Slimuru = 2,
+    Ragna = 4,
 }
 
 local SLOT_ROLE_LABELS = {
     [1] = "Ulq",
-    [2] = "Ulq2",
+    [2] = "Ulq",
     [3] = "Rukia",
-    [4] = "Shieldbreaker",
-    [5] = "Reaper",
+    [4] = "Ragna",
+    [5] = "Primordial",
     [6] = "RageDrago",
 }
 
-local towerNames = { "Rukia", "Ulq", "Ulq2", "Ragna", "Primordial", "Reaper", "GoldenDrago", "RageDrago", "Shieldbreaker", "Emilia", "HeroOfHell" }
+local towerNames = TOWER_ID_UI_NAMES
 
 local LOBBY_TELEPORT_POSITIONS = {
     { -271, 4, -166 },
@@ -8254,14 +8248,13 @@ local function dexFindTowerIdByName(unitName)
     end
 
     if towerKey then
+        if Towers[towerKey] and type(Towers[towerKey]) == "string" and Towers[towerKey]:match("^%d+:%d+$") then
+            return Towers[towerKey], towerKey
+        end
+
         local slotIndex = TOWER_ROLE_SLOTS[towerKey]
         if slotIndex and TowerSlots[slotIndex] and type(TowerSlots[slotIndex]) == "string" and TowerSlots[slotIndex]:match("^%d+:%d+$") then
             return TowerSlots[slotIndex], towerKey
-        end
-
-        local towerId = Towers[towerKey]
-        if type(towerId) == "string" and towerId:match("^%d+:%d+$") then
-            return towerId, towerKey
         end
 
         local option = Options and Options["Tower_" .. towerKey]
@@ -8598,24 +8591,23 @@ local function getHotbarSlotsByIndex()
     return slots
 end
 
-local function syncLegacyTowersFromSlots()
-    for slotIndex = 1, HOTBAR_SLOT_COUNT do
-        local towerId = TowerSlots[slotIndex]
-        if type(towerId) == "string" and towerId ~= "" then
-            Towers["Slot" .. slotIndex] = towerId
-            local role = SLOT_ROLE_LABELS[slotIndex]
-            if role then
-                Towers[role] = towerId
-            end
-        end
+local function syncTowerAliases()
+    if Towers.Ulq and Towers.Ulq ~= "" then
+        Towers.Ulq2 = Towers.Ulq
     end
+    if Towers.RageDrago and Towers.RageDrago ~= "" then
+        Towers.GoldenDrago = Towers.RageDrago
+    end
+    if Towers.Ragna and Towers.Ragna ~= "" then
+        Towers.Shieldbreaker = Towers.Ragna
+    end
+    if Towers.Primordial and Towers.Primordial ~= "" then
+        Towers.Reaper = Towers.Primordial
+    end
+end
 
-    if TowerSlots[1] and TowerSlots[1] ~= "" then
-        Towers.Ulq = TowerSlots[1]
-    end
-    if TowerSlots[2] and TowerSlots[2] ~= "" then
-        Towers.Ulq2 = TowerSlots[2]
-    end
+local function syncLegacyTowersFromSlots()
+    syncTowerAliases()
 end
 
 local function getHotbarSlotDisplayName(slotIndex)
@@ -8669,6 +8661,31 @@ local function resolveTowerId(towerOrSlot)
         return nil
     end
 
+    if type(towerOrSlot) == "string" then
+        local direct = Towers[towerOrSlot]
+        if type(direct) == "string" and direct ~= "" and direct:match("^%d+:%d+$") then
+            return direct
+        end
+
+        if towerOrSlot == "Ulq2" and Towers.Ulq and Towers.Ulq ~= "" then
+            return Towers.Ulq
+        end
+        if towerOrSlot == "GoldenDrago" and Towers.RageDrago and Towers.RageDrago ~= "" then
+            return Towers.RageDrago
+        end
+        if towerOrSlot == "Shieldbreaker" and Towers.Ragna and Towers.Ragna ~= "" then
+            return Towers.Ragna
+        end
+        if towerOrSlot == "Reaper" and Towers.Primordial and Towers.Primordial ~= "" then
+            return Towers.Primordial
+        end
+
+        local option = Options and Options["Tower_" .. towerOrSlot]
+        if option and option.Value and tostring(option.Value):match("^%d+:%d+$") then
+            return tostring(option.Value)
+        end
+    end
+
     local slotIndex = nil
     if type(towerOrSlot) == "number" then
         slotIndex = towerOrSlot
@@ -8678,37 +8695,20 @@ local function resolveTowerId(towerOrSlot)
             slotIndex = tonumber(slotText)
         else
             slotIndex = TOWER_ROLE_SLOTS[towerOrSlot]
-            if not slotIndex and Towers[towerOrSlot] and Towers[towerOrSlot] ~= "" then
-                local saved = Towers[towerOrSlot]
-                if type(saved) == "string" and saved:match("^%d+:%d+$") then
-                    return saved
-                end
-            end
         end
     end
 
     if slotIndex and slotIndex >= 1 and slotIndex <= HOTBAR_SLOT_COUNT then
-        local towerId = TowerSlots[slotIndex]
-        if type(towerId) == "string" and towerId ~= "" and towerId:match("^%d+:%d+$") then
-            return towerId
+        local role = SLOT_ROLE_LABELS[slotIndex]
+        if role and Towers[role] and Towers[role] ~= "" and Towers[role]:match("^%d+:%d+$") then
+            return Towers[role]
         end
 
         local liveSlots = getHotbarSlotsByIndex()
         local liveId = liveSlots[slotIndex]
         if type(liveId) == "string" and liveId ~= "" then
-            TowerSlots[slotIndex] = liveId
-            syncLegacyTowersFromSlots()
             return liveId
         end
-
-        local role = SLOT_ROLE_LABELS[slotIndex]
-        if role and Towers[role] and Towers[role] ~= "" then
-            return Towers[role]
-        end
-    end
-
-    if type(towerOrSlot) == "string" and Towers[towerOrSlot] and Towers[towerOrSlot] ~= "" then
-        return Towers[towerOrSlot]
     end
 
     return nil
@@ -9147,16 +9147,12 @@ end
 local function setTowerOption(towerName, value)
     Towers[towerName] = value
 
-    local slotIndex = TOWER_ROLE_SLOTS[towerName]
-    if slotIndex then
-        setTowerSlotOption(slotIndex, value)
-        return
-    end
-
     local option = Options["Tower_" .. towerName]
     if option and option.SetValue then
         option:SetValue(value)
     end
+
+    syncTowerAliases()
 end
 
 local LOADOUT_DISABLED_MSG = "this feature isnt implemented yet!"
@@ -9385,54 +9381,50 @@ autoInputTowers = function(options)
         getgenv().ActiveLoadout = Options.ActiveLoadout.Value
     end
 
-    local assigned, err = getHotbarTowerIds()
-    if not assigned then
+    local hotbar = waitForHotbar(3, false)
+    if not hotbar then
         if not quiet then
-            warn("[Hollow] Hotbar sync:", err)
+            warn("[Hollow] Hotbar sync: Hotbar not found. Equip your hotbar in lobby first.")
         end
         return false
     end
 
     local filled = 0
-    for slotIndex = 1, HOTBAR_SLOT_COUNT do
-        local id = assigned[slotIndex]
-        if id and id ~= "" then
-            setTowerSlotOption(slotIndex, id)
+    for _, entry in ipairs(collectHotbarSlotEntries(hotbar)) do
+        local slotInst = entry.inst
+        if slotInst.Parent ~= hotbar and slotInst.Parent and slotInst.Parent:IsA("GuiObject") then
+            slotInst = slotInst.Parent
+        end
+
+        local towerKey = identifyTowerKey(slotInst, entry.index)
+        if towerKey == "Ulq2" then
+            towerKey = "Ulq"
+        elseif towerKey == "GoldenDrago" then
+            towerKey = "RageDrago"
+        end
+
+        local targetName = nil
+        for _, name in ipairs(TOWER_ID_UI_NAMES) do
+            if towerKey == name then
+                targetName = name
+                break
+            end
+        end
+
+        if targetName and entry.id and entry.id ~= "" then
+            setTowerOption(targetName, entry.id)
             filled = filled + 1
         end
     end
 
-    for slotIndex = 1, HOTBAR_SLOT_COUNT do
-        local id = assigned[slotIndex]
-        if id and id ~= "" then
-            local hotbar = findHotbar(false)
-            if hotbar then
-                for _, entry in ipairs(collectHotbarSlotEntries(hotbar)) do
-                    if entry.index == slotIndex then
-                        local slotInst = entry.inst
-                        if slotInst.Parent ~= hotbar and slotInst.Parent and slotInst.Parent:IsA("GuiObject") then
-                            slotInst = slotInst.Parent
-                        end
-                        local nameText = tostring(getSlotNameLabel(slotInst) or collectSlotText(slotInst) or ""):lower()
-                        if nameText:find("emilia", 1, true) or nameText:find("emiri", 1, true) or nameText:find("savior", 1, true) or nameText:find("blizzard", 1, true) then
-                            getgenv().EmiliaID = id
-                            Towers.Emilia = id
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    syncLegacyTowersFromSlots()
-    refreshTowerSlotLabels()
+    syncTowerAliases()
 
     if not quiet and filled > 0 then
         warn(string.format("[Hollow] Synced %d tower ID(s) from hotbar.", filled))
     end
 
     queueAutoSave()
-    return true
+    return filled > 0
 end
 
 local function isAutoInputTowersEnabled()
@@ -9462,7 +9454,6 @@ local function hookHotbarAutoSyncEvents()
         task.defer(function()
             task.wait(0.25)
             pcall(autoInputTowers, { quiet = true })
-            pcall(refreshTowerSlotLabels)
         end)
     end)
 end
@@ -9603,32 +9594,24 @@ restoreEnabledFeatures = function()
         end
     end
 
-    for slotIndex = 1, HOTBAR_SLOT_COUNT do
-        local flag = "Tower_Slot" .. slotIndex
+    for _, towerName in ipairs(TOWER_ID_UI_NAMES) do
+        local flag = "Tower_" .. towerName
         local option = Options[flag]
         if option then
             local saved = readSetting(flag, nil)
             if saved == nil or saved == "" then
-                local role = SLOT_ROLE_LABELS[slotIndex]
-                if role then
-                    saved = readSetting("Tower_" .. role, nil)
-                end
+                saved = readSetting("Tower_Slot" .. tostring(TOWER_ROLE_SLOTS[towerName] or ""), nil)
             end
             if saved ~= nil and tostring(option.Value) ~= saved then
                 option:SetValue(saved)
             end
             if option.Value ~= "" then
-                TowerSlots[slotIndex] = option.Value
+                Towers[towerName] = option.Value
             end
         end
     end
 
-    for _, towerName in ipairs(towerNames) do
-        local option = Options["Tower_" .. towerName]
-        if option and option.Value ~= "" then
-            Towers[towerName] = option.Value
-        end
-    end
+    syncTowerAliases()
     syncLegacyTowersFromSlots()
 
     if Options.SummonAmount then
@@ -10112,28 +10095,25 @@ makeToggle(PvPSection, "Remove Titans", "RemoveTitans", false)
 
 local TowerGroup = towerTab:AddSection({ Name = "TOWER IDS", Position = "left" })
 makeToggle(TowerGroup, "Auto Input Towers", "AutoInputTowers", true)
-for slotIndex = 1, HOTBAR_SLOT_COUNT do
-    local flag = "Tower_Slot" .. slotIndex
-    local labelObj = TowerGroup:AddLabel(formatTowerSlotLabel(slotIndex))
-    towerSlotLabelRefs[slotIndex] = labelObj
-
-    local defaultValue = readSetting(flag, TowerSlots[slotIndex] or "")
+for _, towerName in ipairs(TOWER_ID_UI_NAMES) do
+    local flag = "Tower_" .. towerName
+    local defaultValue = readSetting(flag, Towers[towerName] or "")
     local obj = { Value = defaultValue, _callbacks = {} }
     Options[flag] = obj
-    TowerSlots[slotIndex] = defaultValue
+    Towers[towerName] = defaultValue
 
-    labelObj:AddTextInput({
+    TowerGroup:AddLabel(towerName):AddTextInput({
         Default = tostring(defaultValue or ""),
         Placeholder = "Tower ID",
         Flag = flag,
         Size = 72,
         Callback = function(value)
             obj.Value = value
-            TowerSlots[slotIndex] = value
+            Towers[towerName] = value
             if not loadingSettings then
                 writeSetting(flag, value)
             end
-            syncLegacyTowersFromSlots()
+            syncTowerAliases()
             for _, cb in ipairs(obj._callbacks) do
                 cb(value)
             end
@@ -10142,19 +10122,19 @@ for slotIndex = 1, HOTBAR_SLOT_COUNT do
 
     function obj:SetValue(v)
         obj.Value = v
-        TowerSlots[slotIndex] = v
+        Towers[towerName] = v
         local ctrl = NeverLose.Flags[flag]
         if ctrl then
             ctrl:SetValue(v)
         end
-        syncLegacyTowersFromSlots()
+        syncTowerAliases()
     end
 
     function obj:OnChanged(cb)
         table.insert(obj._callbacks, cb)
     end
 end
-syncLegacyTowersFromSlots()
+syncTowerAliases()
 
 local LoadoutsSection = loadoutsTab:AddSection({ Name = "LOADOUTS", Position = "left" })
 
@@ -10194,20 +10174,20 @@ getgenv().amounttosummon = tonumber(Options.SummonAmount.Value) or 1
 getgenv().SummonAmount = getgenv().amounttosummon
 getgenv().SummonBanner = Options.SummonBanner.Value
 
-for slotIndex = 1, HOTBAR_SLOT_COUNT do
-    local flag = "Tower_Slot" .. slotIndex
+for _, towerName in ipairs(TOWER_ID_UI_NAMES) do
+    local flag = "Tower_" .. towerName
     local option = Options[flag]
     if option then
         option:OnChanged(function(value)
-            TowerSlots[slotIndex] = value
-            syncLegacyTowersFromSlots()
+            Towers[towerName] = value
+            syncTowerAliases()
         end)
         if option.Value ~= "" then
-            TowerSlots[slotIndex] = option.Value
+            Towers[towerName] = option.Value
         end
     end
 end
-syncLegacyTowersFromSlots()
+syncTowerAliases()
 
 task.defer(styleNeverloseRowControls)
 task.delay(0.75, styleNeverloseRowControls)
