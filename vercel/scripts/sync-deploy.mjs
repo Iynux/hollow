@@ -35,7 +35,7 @@ function syncRootDeployBundle() {
 
   const rootPublic = path.join(repoRoot, "public");
   fs.mkdirSync(rootPublic, { recursive: true });
-  for (const name of ["hollow.lua", "loader.lua"]) {
+  for (const name of ["loader.lua"]) {
     const src = path.join(vercelRoot, "public", name);
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, path.join(rootPublic, name));
@@ -126,13 +126,22 @@ function writeHollowCopies(body, hash) {
   const targets = [
     path.join(vercelRoot, "hollow.lua"),
     path.join(privateDir, "hollow.lua"),
-    path.join(vercelRoot, "public", "hollow.lua"),
   ];
 
   for (const dest of targets) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, stamped, "utf8");
     console.log(`[sync] hollow.lua -> ${dest}`);
+  }
+
+  for (const publicHollow of [
+    path.join(vercelRoot, "public", "hollow.lua"),
+    path.join(repoRoot, "public", "hollow.lua"),
+  ]) {
+    if (fs.existsSync(publicHollow)) {
+      fs.unlinkSync(publicHollow);
+      console.log(`[sync] removed public copy ${publicHollow}`);
+    }
   }
 
   return stamped;

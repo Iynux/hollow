@@ -2,6 +2,7 @@
 -- Hollow loader — login UI then fetch main script (auto-execute safe)
 local API = "https://fuckmark.vercel.app"
 local AUTH_FOLDER = "Hollow"
+local HOLLOW_CLIENT_HEADER = "hollow-loader-v1"
 
 if getgenv().HollowLoaderRunning then
     return
@@ -138,7 +139,10 @@ end
 
 local function httpRequest(url, method, body)
     method = method or "GET"
-    local headers = {}
+    local headers = {
+        ["X-Hollow-Client"] = HOLLOW_CLIENT_HEADER,
+        ["User-Agent"] = "HollowLoader/Roblox",
+    }
     if method == "POST" then
         headers["Content-Type"] = "application/json"
     end
@@ -543,18 +547,19 @@ local function isStaleScriptBody(body)
 end
 
 local function loadMainScript(token)
-    local url = API .. "/hollow.lua?_=" .. tostring(tick())
+    local url = API .. "/api/script?token=" .. HttpService:UrlEncode(token) .. "&_=" .. tostring(tick())
 
     local customUrl = getgenv().HollowScriptUrl
     if type(customUrl) == "string" and customUrl ~= "" then
-        url = customUrl .. (customUrl:find("?", 1, true) and "&" or "?") .. "_=" .. tostring(tick())
+        url = customUrl .. (customUrl:find("?", 1, true) and "&" or "?") .. "token="
+            .. HttpService:UrlEncode(token) .. "&_=" .. tostring(tick())
     end
 
     local scriptRes = httpRequest(url, "GET")
     if not scriptRes or not scriptRes.Body or isStaleScriptBody(scriptRes.Body) then
         local preview = scriptRes and scriptRes.Body and (scriptRes.Body:sub(1, 120):gsub("%s+", " ")) or "no response"
         return warn(
-            "[Hollow] Script fetch failed — use loader.lua and push vercel/public/hollow.lua. Preview:",
+            "[Hollow] Script fetch failed — log in through loader.lua. Preview:",
             preview
         )
     end

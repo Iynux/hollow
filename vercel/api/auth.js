@@ -1,13 +1,27 @@
 const { hashPassword, normalizeUsername, randomToken } = require("../lib/crypto");
 const { accountKey, getRedis, tokenKey } = require("../lib/redis");
 const { json, readJsonBody } = require("../lib/http");
+const { applySecurityHeaders, checkRateLimit, clientIp, isBrowserOrScraper } = require("../lib/security");
 
 module.exports = async (req, res) => {
+  applySecurityHeaders(res);
+
   if (req.method !== "POST") {
     return json(res, 405, { ok: false, error: "POST only" });
   }
 
+  if (isBrowserOrScraper(req)) {
+    return json(res, 403, { ok: false, error: "Forbidden" });
+  }
+
   try {
+    const redis = await getRedis();
+    const ip = clientIp(req);
+    const allowed = await checkRateLimit(redis, `auth:${ip}`, 40, 60);
+    if (!allowed) {
+      return json(res, 429, { ok: false, error: "Too many attempts" });
+    }
+
     const body = await readJsonBody(req);
     const username = normalizeUsername(body.username);
     const password = String(body.password || "");
@@ -19,7 +33,6 @@ module.exports = async (req, res) => {
       return json(res, 400, { ok: false, error: "Missing username, password, or hwid" });
     }
 
-    const redis = await getRedis();
     const account = await redis.get(accountKey(username));
     if (!account) {
       return json(res, 401, { ok: false, error: "Invalid login" });

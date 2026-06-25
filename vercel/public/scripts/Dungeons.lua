@@ -45,10 +45,15 @@ local function fireGlobal(remoteName, ...)
         getgenv().HollowFireRemote(remoteName, ...)
         return
     end
+    local args = { ... }
     pcall(function()
         local remote = GlobalInit:FindFirstChild(remoteName) or GlobalInit:WaitForChild(remoteName, 3)
         if remote then
-            remote:FireServer(...)
+            if #args > 0 then
+                remote:FireServer(table.unpack(args))
+            else
+                remote:FireServer()
+            end
         end
     end)
 end

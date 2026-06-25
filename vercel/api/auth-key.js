@@ -1,13 +1,26 @@
 const { normalizeKey, randomToken } = require("../lib/crypto");
 const { findAccountByKey, getRedis, linkKeyToAccount, tokenKey } = require("../lib/redis");
 const { json, readJsonBody } = require("../lib/http");
+const { applySecurityHeaders, checkRateLimit, clientIp, isBrowserOrScraper } = require("../lib/security");
 
 module.exports = async (req, res) => {
+  applySecurityHeaders(res);
+
   if (req.method !== "POST") {
     return json(res, 405, { ok: false, error: "POST only" });
   }
 
+  if (isBrowserOrScraper(req)) {
+    return json(res, 403, { ok: false, error: "Forbidden" });
+  }
+
   try {
+    const redis = await getRedis();
+    const allowed = await checkRateLimit(redis, `auth-key:${clientIp(req)}`, 40, 60);
+    if (!allowed) {
+      return json(res, 429, { ok: false, error: "Too many attempts" });
+    }
+
     const body = await readJsonBody(req);
     const keyValue = normalizeKey(body.key);
     const hwid = String(body.hwid || "").trim();
@@ -18,7 +31,6 @@ module.exports = async (req, res) => {
       return json(res, 400, { ok: false, error: "Missing key or hwid" });
     }
 
-    const redis = await getRedis();
     const account = await findAccountByKey(redis, keyValue);
     if (!account) {
       return json(res, 401, { ok: false, error: "Invalid key" });

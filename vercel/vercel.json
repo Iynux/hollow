@@ -2,19 +2,24 @@
   "version": 2,
   "rewrites": [
     { "source": "/", "destination": "/api/index" },
+    { "source": "/hollow.lua", "destination": "/api/hollow-guard" },
+    { "source": "/hollow", "destination": "/api/hollow-guard" },
+    { "source": "/private/:path*", "destination": "/api/hollow-guard" },
+    { "source": "/scripts/:path*", "destination": "/api/hollow-guard" },
     { "source": "/api/script-meta", "destination": "/api/health" }
   ],
   "headers": [
     {
-      "source": "/api/script",
+      "source": "/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store" }
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
       ]
     },
     {
-      "source": "/hollow.lua",
+      "source": "/api/(.*)",
       "headers": [
-        { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
       ]
     },

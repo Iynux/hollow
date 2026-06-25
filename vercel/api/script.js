@@ -3,13 +3,18 @@ const path = require("path");
 const { getRedis, tokenKey } = require("../lib/redis");
 const { getLiveScriptBody } = require("../lib/script-store");
 const { json, text } = require("../lib/http");
+const {
+  applySecurityHeaders,
+  checkRateLimit,
+  enforceApiAccess,
+  isValidToken,
+} = require("../lib/security");
 
 function loadScriptFromDisk() {
   const cwd = process.cwd();
   const candidates = [
-    path.join(cwd, "public", "hollow.lua"),
-    path.join(cwd, "hollow.lua"),
     path.join(cwd, "private", "hollow.lua"),
+    path.join(cwd, "hollow.lua"),
     path.join(cwd, "..", "hollow.lua"),
   ];
 
@@ -47,19 +52,40 @@ function isStaleScriptBody(body) {
 
 module.exports = async (req, res) => {
   if (req.method !== "GET") {
+    applySecurityHeaders(res);
     return json(res, 405, { ok: false, error: "GET only" });
   }
 
   const token = String((req.query && req.query.token) || "").trim();
-  if (!token) {
+  if (!isValidToken(token)) {
+    applySecurityHeaders(res);
     return text(res, 401, "-- missing token");
   }
 
+  let redis = null;
   try {
-    const redis = await getRedis();
+    redis = await getRedis();
+  } catch {
+    redis = null;
+  }
+
+  if (!(await enforceApiAccess(req, res, redis, {
+    route: "script",
+    requireClient: true,
+    ipLimit: 90,
+  }))) {
+    return;
+  }
+
+  try {
     const username = await redis.get(tokenKey(token));
     if (!username) {
       return text(res, 401, "-- invalid or expired token");
+    }
+
+    const tokenOk = await checkRateLimit(redis, `script:${token}`, 40, 60);
+    if (!tokenOk) {
+      return text(res, 429, "-- rate limited");
     }
 
     let loaded = null;
@@ -76,15 +102,9 @@ module.exports = async (req, res) => {
       return text(res, 500, "-- script not found on server");
     }
 
-    const build = loaded.body.match(/^--\s*HOLLOW_BUILD:([^\r\n]+)/)?.[1] || "unknown";
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-    res.setHeader("X-Hollow-Build", build);
-    res.setHeader("X-Hollow-Source", loaded.source);
-    if (loaded.filePath) {
-      res.setHeader("X-Hollow-File", path.basename(loaded.filePath));
-    }
+    applySecurityHeaders(res);
     return text(res, 200, loaded.body);
   } catch (err) {
-    return text(res, 500, `-- ${String(err?.message || err)}`);
+    return text(res, 500, "-- unavailable");
   }
 };
